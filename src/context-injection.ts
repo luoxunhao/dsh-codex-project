@@ -43,9 +43,9 @@ const REMINDER_CLOSE = '</system-reminder>'
  * satisfies it, and tests can build fixtures without a full Session.
  */
 export interface InjectionSession {
-  readonly header: { readonly cwd?: string }
-  readonly surface: { readonly nodes: readonly number[] }
-  readonly events: readonly SessionEvent[]
+   readonly header: { readonly cwd?: string }
+   readonly surface: { readonly nodes: readonly number[] }
+   readonly events?: readonly SessionEvent[]
 }
 
 /**
@@ -87,6 +87,7 @@ export function composeWorkspaceContextText(
  * @returns true when an equivalent message is already on the surface.
  */
 export function hasIdenticalInjection(session: InjectionSession, message: UserMessage): boolean {
+  if (!session.events) return false
   for (const seq of session.surface.nodes) {
     const event = session.events[seq]
     if (event?.type !== 'user/message') continue

@@ -33,7 +33,7 @@ import { sql } from '@codemirror/lang-sql'
 import { php } from '@codemirror/lang-php'
 import { xml } from '@codemirror/lang-xml'
 import { javascript } from '@codemirror/lang-javascript'
-import { MarkdownText } from '@deepseek-ai/dsh-client-ui-primitives'
+import { MessageText } from '@deepseek-ai/dsh-client-ui-primitives'
 
 import type { SpacesApi } from './api.ts'
 import { extensionOf } from './viewer.ts'
@@ -230,7 +230,7 @@ export function TextEditor(props: TextEditorProps): ReactNode {
           hidden={!inEdit}
         />
         {!inEdit && kind === 'markdown' && (
-          <div className="dsh-cxp-preview-markdown"><MarkdownText text={shown} /></div>
+          <div className="dsh-cxp-preview-markdown"><MessageText text={shown} /></div>
         )}
         {!inEdit && kind === 'html' && (
           <iframe className="dsh-cxp-preview-html" title={path} sandbox={HTML_IFRAME_SANDBOX} srcDoc={shown} />

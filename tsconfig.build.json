@@ -5,7 +5,8 @@
     "noEmit": false,
     "declaration": true,
     "emitDeclarationOnly": true,
-    "outDir": "lib/types"
+    "outDir": "lib/types",
+    "rootDir": "."
   },
   "include": ["src"]
 }
