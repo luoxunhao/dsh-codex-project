@@ -36,7 +36,6 @@ function fakeWorkspaces(picked: string | null = null):
   return {
     service: {
       list: { getSnapshot: () => snapshot, subscribe: () => () => {} },
-      pickDirectory: async () => { picks.count += 1; return picked },
       create: async () => ({ workspaceId: 'w-created' }),
     },
     picks,
@@ -44,7 +43,7 @@ function fakeWorkspaces(picked: string | null = null):
 }
 
 /** A spaces API fake around per-workspace dir lists. */
-function fakeApi(dirsByWorkspace: Record<string, string[]> = {}):
+function fakeApi(dirsByWorkspace: Record<string, string[]> = {}, picked: string | null = null):
   {
     api: SpacesApi
     dirsByWorkspace: Record<string, string[]>
@@ -69,6 +68,7 @@ function fakeApi(dirsByWorkspace: Record<string, string[]> = {}):
         return [...dirs]
       },
       openDirectory: async (path) => { openedDirs.push(path) },
+      pickDirectory: async () => picked,
       project: async () => null,
       listDir: async () => ({ path: '', entries: [], truncated: false }),
       readFile: async () => ({ content: '', truncated: false }),
@@ -297,8 +297,8 @@ describe('WorkspaceDialog', () => {
   })
 
   it('adds an additional dir through the native picker', async () => {
-    const fake = fakeApi({ w1: [] })
     const picked = 'E:\\picked'
+    const fake = fakeApi({ w1: [] }, picked)
     const container = document.createElement('div')
     document.body.appendChild(container)
     const root = createRoot(container)
@@ -307,6 +307,7 @@ describe('WorkspaceDialog', () => {
         workspace: workspace(),
         api: fake.api,
         workspaces: fakeWorkspaces(picked).service,
+
         onClose: () => {},
       }))
     })

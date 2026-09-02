@@ -15,17 +15,21 @@
 import { createElement } from 'react'
 import { IconFolderOpenOutline16 } from '@deepseek-ai/dsh-client-ui-primitives'
 
-import type { Context } from './context.ts'
+import type { Context, BetterSidebarService, UiWorkspaceService } from './context.ts'
 import { createSpacesApi } from './api.ts'
 import { createFileReferenceSource } from './file-reference.ts'
 import { mountWorkspaceMenuManageEntry } from './workspace-menu.ts'
 import { ProjectTab } from './project-tab.tsx'
 import { injectStyles } from './styles.ts'
 
+/** Probe for an optional cordis service without going through the proxy. */
+function probeService(ctx: Context, name: string): unknown {
+  try { return (ctx as any).reflect.get(name) } catch { return undefined }
+}
+
 /** Services required before mounting (provided by the client runtime; the
- *  cordis context proxy refuses undeclared service access). `betterSidebar`
- *  is OPTIONAL: the tab registers only when better-sidebar is installed. */
-export const inject = ['workspaces', 'betterSidebar', 'inputTriggers']
+ *  `betterSidebar` is OPTIONAL: cordis keeps the fiber pending when missing, so we omit it from inject. */
+export const inject = ['workspaces', 'inputTriggers']
 
 /** Apply claim: a duplicated client injection must not mount a second entry. */
 let claimed = false
@@ -51,14 +55,16 @@ export function apply(ctx: Context): void {
   }
   mount('styles', () => injectStyles())
   if (ctx.inputTriggers !== undefined) {
-    mount('file-reference source', () => ctx.inputTriggers!.registerSource(createFileReferenceSource()))
+    mount('file-reference source', () => ctx.inputTriggers!.registerSource(createFileReferenceSource(api)))
   }
   mount('workspace … menu entry', () => mountWorkspaceMenuManageEntry({
     workspaces: ctx.workspaces,
     api,
+    uiWorkspace: probeService(ctx, 'uiWorkspace') as UiWorkspaceService | undefined,
   }))
-  if (ctx.betterSidebar !== undefined) {
-    mount('项目文件夹 tab', () => ctx.betterSidebar!.registerTab({
+  const betterSidebar = probeService(ctx, 'betterSidebar') as BetterSidebarService | undefined
+  if (betterSidebar !== undefined) {
+    mount('项目文件夹 tab', () => betterSidebar.registerTab({
       id: 'codex-project:project',
       title: () => '项目文件夹',
       icon: createElement(IconFolderOpenOutline16, { size: 16 }),

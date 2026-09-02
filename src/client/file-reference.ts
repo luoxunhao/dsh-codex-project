@@ -22,6 +22,7 @@ import type {
   SidebarTabScope,
 } from './context.ts'
 import { basename } from './paths.ts'
+import type { SpacesApi } from './api.ts'
 
 /** The registered source name; the chip's `source` routes here for serialization. */
 export const FILE_REF_SOURCE = 'codex-project:file'
@@ -33,12 +34,32 @@ const INSERT_REFERENCE_EVENT = 'slash/input-insert-reference'
  * The hidden `@` file source: contributes no menu candidates (empty group
  * renders nothing), exists only so the chip's codec is resolvable by name.
  */
-export function createFileReferenceSource(): unknown {
+export function createFileReferenceSource(api?: SpacesApi): unknown {
   return {
     trigger: '@',
     name: FILE_REF_SOURCE,
     order: 999,
-    candidates: async () => [],
+    candidates: async (_session: unknown, _req: unknown): Promise<readonly { name: string; value?: string }[]> => {
+      if (api === undefined) return []
+      try {
+        const allSpaces = await api.list()
+        const candidates: Array<{ name: string; value?: string }> = []
+        for (const [, workspace] of Object.entries(allSpaces)) {
+          for (const dir of workspace.dirs) {
+            const listing = await api.listDir(workspace.path, dir)
+            for (const entry of listing.entries) {
+              if (!entry.isDir) {
+                candidates.push({ name: `${basename(dir)}/${entry.name}`, value: entry.path })
+              }
+            }
+          }
+        }
+        return candidates
+      } catch (error) {
+        console.warn('[dsh-codex-project] file reference candidates failed:', error)
+        return []
+      }
+    },
     onPick: () => undefined,
     codec: {
       // The copy / persistence projection of one chip.

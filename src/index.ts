@@ -25,6 +25,7 @@ import type { ApprovalOutcome } from '@deepseek-ai/dsh-user-approval'
 import { foldWorkspaceContext } from './context-injection.ts'
 import { wrapSandboxConfine } from './seam.ts'
 import { openDirectoryRequest } from './open-directory.ts'
+import { pickDirectoryRequest } from './pick-directory.ts'
 import { migrateLegacySpaces } from './dirs-migration.ts'
 import { DirsStore } from './dirs-store.ts'
 import type { WorkspaceRegistryFace } from './dirs-store.ts'
@@ -113,6 +114,16 @@ export function apply(ctx: Context): void {
         }
         const opened = openDirectoryRequest(body)
         writeJson(response, opened.status, opened.body)
+        return
+      }
+      // 选择本地目录: plugin-owned native action (shows the OS folder picker).
+      if (url.pathname === '/codex-project/api/pick-directory') {
+        if (request.method !== 'POST') {
+          writeJson(response, 405, { ok: false, error: 'method not allowed' })
+          return
+        }
+        const picked = await pickDirectoryRequest()
+        writeJson(response, picked.status, picked.body)
         return
       }
       const result = await dirsApi(store, ctx.workspaceRegistry, request.method ?? 'GET', `${url.pathname}${url.search}`, body)

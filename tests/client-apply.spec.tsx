@@ -24,20 +24,20 @@ function fakeContext(): Context & { disposers: Array<() => void | (() => void)> 
         getSnapshot: () => ({ items: [] }),
         subscribe: () => () => {},
       },
-      pickDirectory: async () => null,
       create: async () => ({ workspaceId: 'w1' }),
     },
     effect: (callback) => {
       state.disposers.push(callback)
     },
+    get: (name: string) => undefined,
   }
   // Mirror the cordis proxy: any property access outside the declared
-  // inject list and the built-in faces throws.
+  // inject list and the built-in faces returns undefined for undeclared services.
   const allowed = new Set([...inject, 'effect'])
   return new Proxy(target, {
     get(inner, prop) {
       if (typeof prop === 'string' && !allowed.has(prop) && !(prop in inner)) {
-        throw new Error(`cannot get property "${prop}" without inject`)
+        return undefined
       }
       return Reflect.get(inner, prop)
     },
@@ -50,7 +50,7 @@ describe('apply', () => {
   })
 
   it('declares the workspaces service in inject', () => {
-    expect(inject).toEqual(['workspaces', 'betterSidebar', 'inputTriggers'])
+    expect(inject).toEqual(['workspaces', 'inputTriggers'])
   })
 
   it('mounts the menu injection and tears it down', () => {

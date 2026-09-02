@@ -66,6 +66,7 @@ export interface SpacesApi {
    * bypasses any openPath interception by other plugins).
    */
   openDirectory(path: string): Promise<void>
+  pickDirectory(): Promise<string | null>
   /**
    * The project anchored at a session cwd (main root + shared dirs), or null
    * when no record anchors that cwd (the 项目文件夹 tab's empty state).
@@ -128,6 +129,7 @@ export function createSpacesApi(base = '/codex-project/api'): SpacesApi {
       return parsed.dirs
     },
     openDirectory: async (path) => { await request<{ ok: boolean }>(base, 'POST', '/open-directory', { path }) },
+    pickDirectory: async () => { const r = await request<{ path: string | null } | { error: string }>(base, 'POST', '/pick-directory', {}); return 'path' in r ? r.path : null },
     project: async (cwd) => {
       const parsed = await request<{ project: ProjectView | null }>(base, 'GET', `/project?cwd=${enc(cwd)}`)
       return parsed.project

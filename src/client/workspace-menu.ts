@@ -37,7 +37,7 @@ import { createRoot, type Root } from 'react-dom/client'
 import { IconFolderOpenOutline16, IconSettingsOutline16 } from '@deepseek-ai/dsh-client-ui-primitives'
 
 import type { SpacesApi } from './api.ts'
-import type { ClientWorkspaceView, ClientWorkspacesService } from './context.ts'
+import type { ClientWorkspaceView, ClientWorkspacesService, UiWorkspaceService } from './context.ts'
 import { WorkspaceDialog } from './workspace-dialog.tsx'
 
 /** The injected block's identity (idempotent per-popup injection). */
@@ -102,8 +102,9 @@ function closeNativeMenu(): void {
 export function mountWorkspaceMenuManageEntry(deps: {
   workspaces: ClientWorkspacesService
   api: SpacesApi
+  uiWorkspace?: UiWorkspaceService
 }): () => void {
-  const { workspaces, api } = deps
+  const { workspaces, api, uiWorkspace } = deps
   let dialogRoot: Root | undefined
   let dialogHost: HTMLDivElement | undefined
   // Injected menu-item roots: unmounted on dispose so a popup still open at
@@ -150,6 +151,7 @@ export function mountWorkspaceMenuManageEntry(deps: {
       workspace,
       api,
       workspaces,
+      uiWorkspace,
       onClose: closeDialog,
     }))
   }

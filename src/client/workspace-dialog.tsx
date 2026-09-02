@@ -14,7 +14,7 @@ import { useEffect, useState, type ReactNode } from 'react'
 import { Button, IconCloseOutline16, IconPlusOutline16, IconTrashOutline16 } from '@deepseek-ai/dsh-client-ui-primitives'
 
 import type { SpacesApi } from './api.ts'
-import type { ClientWorkspaceView, ClientWorkspacesService } from './context.ts'
+import type { ClientWorkspaceView, ClientWorkspacesService, UiWorkspaceService } from './context.ts'
 import { basename, samePath } from './paths.ts'
 
 /** The dialog's injected face. */
@@ -23,6 +23,8 @@ export interface WorkspaceDialogProps {
   workspace: ClientWorkspaceView
   api: SpacesApi
   workspaces: ClientWorkspacesService
+  /** The DSH uiWorkspace service (pickDirectory). */
+  uiWorkspace?: UiWorkspaceService
   /** Close the dialog. */
   onClose(): void
 }
@@ -32,7 +34,7 @@ export interface WorkspaceDialogProps {
  * @param props - the workspace, the dirs API, the workspaces service, and the close callback.
  */
 export function WorkspaceDialog(props: WorkspaceDialogProps): ReactNode {
-  const { workspace, api, workspaces, onClose } = props
+  const { workspace, api, workspaces, uiWorkspace, onClose } = props
   const [dirs, setDirs] = useState<string[] | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -70,7 +72,7 @@ export function WorkspaceDialog(props: WorkspaceDialogProps): ReactNode {
   }
 
   const addDirectory = (): Promise<void> => run(async () => {
-    const picked = await workspaces.pickDirectory()
+    const picked = await api.pickDirectory()
     if (picked === null) return
     const current = dirs ?? []
     if (current.some(candidate => samePath(candidate, picked))) return
