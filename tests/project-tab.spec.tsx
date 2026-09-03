@@ -191,6 +191,34 @@ describe('ProjectTab', () => {
     expect(tab.querySelector('.dsh-cxp-preview-filename')?.textContent).toContain('readme.md')
   })
 
+  it('renders markdown preview as semantic output, not the raw source', async () => {
+    const listing: ProjectListing = {
+      path: ROOT_A,
+      entries: [
+        { name: 'notes.md', path: `${ROOT_A}\\notes.md`, isDir: false, hidden: false, isSymlink: false, broken: false },
+      ],
+      truncated: false,
+    }
+    const fake = fakeApi(PROJECT, { [ROOT_A]: listing })
+    fake.api.readFile = async () => ({ content: '# Title\n\nsome *text*', truncated: false })
+    const tab = await renderTab(fake.api, fakeCtx().ctx)
+    await act(async () => {
+      rowByText(tab, 'proj (主)').click()
+    })
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)) })
+    await act(async () => {
+      rowByText(tab, 'notes.md').click()
+    })
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)) })
+    const markdown = tab.querySelector('.dsh-cxp-preview-markdown')
+    expect(markdown, 'markdown preview host is present').not.toBeNull()
+    // Markdown renders as semantic nodes (heading + emphasis), not as literal
+    // source text — a raw `MessageText` passthrough would keep the `#`/`*`.
+    expect(markdown!.querySelector('h1')?.textContent).toBe('Title')
+    expect(markdown!.querySelector('em')?.textContent).toBe('text')
+    expect(markdown!.textContent).not.toContain('# Title')
+  })
+
   it('keeps the inline editor host mounted and reveals it on 编辑', async () => {
     const listing: ProjectListing = {
       path: ROOT_A,
