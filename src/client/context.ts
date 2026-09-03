@@ -73,14 +73,30 @@ export interface SidebarTabComponentProps {
   scope: SidebarTabScope
 }
 
+/** One session row of the client session projection (subset actually consumed). */
+export interface ClientSessionSummary {
+  /** The session's working directory; absent while the projection is cold. */
+  cwd?: string
+}
+
+/** The session list snapshot: rows keyed by session id. */
+export interface ClientSessionListState {
+  byId: Record<string, ClientSessionSummary | undefined>
+}
+
 /**
- * The client runtime context face the tab consumes: the conversation service
- * (`get('conversation')`) plus the session registry — both reached lazily so
- * a missing service degrades to a logged no-op, never a crash.
+ * The client runtime context face the tab and the `@` source consume: the
+ * conversation service (`get('conversation')`) plus the session registry —
+ * both reached lazily so a missing service degrades to a logged no-op, never a
+ * crash. The session list carries each session's cwd, which the `@` source
+ * needs to resolve the project roots its candidates come from.
  */
 export interface ClientRuntimeContext {
   get(service: string): unknown
-  sessions: { scope(sessionId: string): unknown }
+  sessions: {
+    scope(sessionId: string): unknown
+    list?: { getSnapshot(): ClientSessionListState }
+  }
 }
 
 /** The composer draft input face (subset of the conversation service). */
@@ -105,6 +121,8 @@ export interface FileReferenceInsert {
   ref: string
   label: string
   clipboardText: string
+  /** Chip glyph: a directory renders as a folder, a file as a file. */
+  appearance?: 'file' | 'folder' | 'session'
 }
 
 /** The zero-width insertion span (current draft end + CAS revision). */

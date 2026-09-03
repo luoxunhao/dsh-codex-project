@@ -132,12 +132,12 @@ export function ProjectTab(props: ProjectTabProps): ReactNode {
     })
   }, [])
 
-  const reference = useCallback((path: string) => {
-    insertFileReference(ctx, scope, path)
+  const reference = useCallback((path: string, isDirectory = false) => {
+    insertFileReference(ctx, scope, path, { isDirectory })
   }, [ctx, scope])
 
   /** The hover-revealed @-reference button (or the transient "已复制" label). */
-  const rowAction = (path: string): ReactNode => {
+  const rowAction = (path: string, isDirectory = false): ReactNode => {
     if (copiedPath === path) return <span className="dsh-cxp-row-copied">已复制</span>
     return (
       <button
@@ -147,7 +147,7 @@ export function ProjectTab(props: ProjectTabProps): ReactNode {
         title="在对话中引用"
         onClick={(event) => {
           event.stopPropagation()
-          reference(path)
+          reference(path, isDirectory)
         }}
       >
         @
@@ -285,7 +285,7 @@ export function ProjectTab(props: ProjectTabProps): ReactNode {
           if (target === null) return
           setRowMenu(null)
           if (id === 'open-dir') { openDir(target.path); return }
-          if (id === 'reference') { reference(target.path); return }
+          if (id === 'reference') { reference(target.path, !target.isFile); return }
           copyPath(
             id === 'relative' ? relativePath(cwd ?? '', target.path) : target.path,
             target.path,
@@ -321,7 +321,7 @@ function DirNode(props: {
   defaultOpen: boolean
   onOpenFile: (path: string) => void
   onOpenDir: (path: string) => void
-  rowAction: (path: string) => ReactNode
+  rowAction: (path: string, isDirectory?: boolean) => ReactNode
   openRowMenu: (event: MouseEvent, path: string, isFile: boolean) => void
 }): ReactNode {
   const {
@@ -372,7 +372,7 @@ function DirNode(props: {
       >
         <span className="dsh-cxp-tree-icon">{expanded ? <IconFolderOpen16 size={14} /> : <IconFolderClose16 size={14} />}</span>
         <span className="dsh-cxp-tree-name">{name}</span>
-        {rowAction(path)}
+        {rowAction(path, true)}
       </div>
       {expanded && (
         <div>
@@ -417,7 +417,7 @@ function FileRow(props: {
   entry: ProjectEntry
   depth: number
   onOpenFile: (path: string) => void
-  rowAction: (path: string) => ReactNode
+  rowAction: (path: string, isDirectory?: boolean) => ReactNode
   openRowMenu: (event: MouseEvent, path: string, isFile: boolean) => void
 }): ReactNode {
   const { entry, depth, onOpenFile, rowAction, openRowMenu } = props

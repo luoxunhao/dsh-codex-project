@@ -55,7 +55,22 @@ export function apply(ctx: Context): void {
   }
   mount('styles', () => injectStyles())
   if (ctx.inputTriggers !== undefined) {
-    mount('file-reference source', () => ctx.inputTriggers!.registerSource(createFileReferenceSource(api)))
+    // The project `@` source: the session projection supplies the cwd that
+    // anchors the project, so shared dirs outside it are reachable here (core
+    // discovery is rooted at the cwd alone).
+    const cwdFor = (sessionId: string): string | undefined => {
+      try {
+        const sessions = probeService(ctx, 'sessions') as {
+          list?: { getSnapshot(): { byId: Record<string, { cwd?: string } | undefined> } }
+        } | undefined
+        return sessions?.list?.getSnapshot().byId[sessionId]?.cwd
+      } catch {
+        return undefined
+      }
+    }
+    mount('file-reference source', () => ctx.inputTriggers!.registerSource(
+      createFileReferenceSource(api, { cwdFor }),
+    ))
   }
   mount('workspace … menu entry', () => mountWorkspaceMenuManageEntry({
     workspaces: ctx.workspaces,
