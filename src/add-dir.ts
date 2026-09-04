@@ -1,5 +1,5 @@
 /**
- * The `add-dir` model tool: the Claude Code `/add-dir` equivalent inside
+ * The `add_dir` model tool: the Claude Code `/add-dir` equivalent inside
  * dsh. The model requests a directory; the user confirms through the dsh
  * approval seam (`ctx.approval.request` — the dialog and audit are core
  * capabilities, the plugin only asks); on `'allowed-once'` the directory is
@@ -7,6 +7,10 @@
  * and persisted. It is a root addition only — no file reads, no command
  * execution; everything beyond the write is the model's own work.
  *
+ * Name note: the model tool is `add_dir` (underscore), matching dsh's
+ * model-tool naming convention (model tools use underscores, e.g.
+ * `ask_user_question`, `todo_write`); the parallel human command is
+ * `/adddir`.
  * @module dsh-codex-project/add-dir
  */
 
@@ -40,13 +44,13 @@ export interface AddDirResult {
 }
 
 /**
- * Build the model-facing `add-dir` tool.
+ * Build the model-facing `add_dir` tool.
  * @param deps - resolution + approval + persistence.
  * @returns the tool definition (register with `ctx.tools`).
  */
 export function defineAddDirTool(deps: AddDirToolDeps) {
   return defineTool({
-    name: 'add-dir',
+    name: 'add_dir',
     description: 'Add an additional directory to the current workspace\'s writable set. ' +
       'After user confirmation, you may READ and WRITE files under the given directory.',
     parameters: {

@@ -1,5 +1,5 @@
 /**
- * add-dir tool tests: approval all branches, validation, workspace
+ * add_dir tool tests: approval all branches, validation, workspace
  * resolution, and idempotence — the pure defineAddDirTool over injected deps.
  */
 
@@ -55,7 +55,7 @@ function run(deps: AddDirToolDeps, path: string, cwd = workspacePath): Promise<u
   } as never)
 }
 
-describe('add-dir tool', () => {
+describe('add_dir tool', () => {
   it('requires an existing directory and rejects non-absolute or missing paths', async () => {
     const { deps } = makeDeps(async () => 'allowed-once' as const)
 
