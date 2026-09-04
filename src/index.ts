@@ -139,8 +139,10 @@ export function apply(ctx: Context): void {
     },
   }), 'dsh-codex-project: api routes')
 
-  // Seed/refresh model-facing context: text-idempotent fold after claimed
-  // user messages; a dir-set change naturally changes the text → refresh.
+  // Seed/refresh model-facing context: fold a <system-reminder> only when the
+  // directory set changed since the last injection (dedup via the real session
+  // surface). A fresh session seeds once; add-dir or the manage dialog changes
+  // the set and the next user message re-folds.
   ctx.on('agent/pre-step', async ({ agent, messages }, next) => {
     const decision = await next()
     try {
