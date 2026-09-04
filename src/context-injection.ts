@@ -10,11 +10,13 @@
  * necessarily produces changed text.
  *
  * The reminder carries one short `<system-reminder>` block listing the
- * workspace's main path plus its additional writable directories — and
- * nothing else. The copy deliberately makes no permission claim (a
- * directory added by the USER is framing, not an entitlement assertion);
- * plus a vanished dir is skipped silently. AGENTS.md summaries are NOT
- * injected: file content is the model's own tool work.
+ * workspace's main path plus its additional writable directories, and a note
+ * that the additional directories are governed by the same workspace-write
+ * permission as the main workspace (the plugin grants a workspace-level SID
+ * on every surviving root — additional dirs never exceed the main root's
+ * boundary, so the model can treat them uniformly). A vanished dir is
+ * skipped silently. AGENTS.md summaries are NOT injected: file content is
+ * the model's own tool work.
  *
  * Dedup: `hasIdenticalInjection` walks the real session surface (the
  * `surface.nodes` sequences resolved through `eventAt`) for the newest
@@ -57,11 +59,13 @@ export interface InjectionSession {
 
 /**
  * The model-facing `<system-reminder>` text describing one workspace's
- * writable set: the main workspace path plus every additional dir. Roots are
- * shown in their configured (canonical-ish) spelling; the current-workspace
- * marker compares canonical forms. Directory list only: no permission
- * claim, no file contents, missing dirs silently skipped.
- * English copy on purpose — the reminder is model-facing prompt text.
+ * writable set: the main workspace path plus every additional dir, then a
+ * sentence noting the additional dirs are governed by the same permission as
+ * the main workspace. Roots are shown in their configured (canonical-ish)
+ * spelling; the current-workspace marker compares canonical forms. Directory
+ * list plus the permission hint — no file contents, missing dirs silently
+ * skipped. English copy on purpose — the reminder is model-facing prompt
+ * text.
  * @param workspaceId - the owning workspace.
  * @param record - the workspace's persisted record.
  * @param canonicalWorkspace - the canonical session workspace.
@@ -80,6 +84,7 @@ export function composeWorkspaceContextText(
     REMINDER_OPEN,
     `[Workspace sharing] The current session workspace (${workspaceId}) is associated with these directories:`,
     ...lines,
+    'The additional directories above are governed by the same permissions as the main workspace.',
     REMINDER_CLOSE,
   ].join('\n')
 }

@@ -104,15 +104,19 @@ describe('composeWorkspaceContextText', () => {
     expect(text).not.toContain('missing')
   })
 
-  it('never claims permissions: the model discovers the boundary by trying', () => {
+  it('notes the additional dirs share the main workspace permission', () => {
+    // The reminder carries a permission hint: the additional dirs are governed
+    // by the same workspace-write boundary as the main workspace. It equates
+    // the additional dirs' permission with the main root's — it does NOT claim
+    // elevation beyond that boundary.
     const text = composeWorkspaceContextText('w1', record(rootA, [rootB]), rootA)
-    expect(text).not.toContain('permission')
-    expect(text).not.toContain('writable')
-    expect(text).not.toContain('read/write')
+    expect(text).toContain('same permissions as the main workspace')
+    // Never over-claims: no read/write on arbitrary files, no full/unrestricted
+    // access, and no claim that the extra dir is the workspace root.
     expect(text).not.toContain('读写权限')
     expect(text).not.toContain('可读写')
-    expect(text).not.toContain('权限')
-    expect(text).not.toContain('共享工作区')
+    expect(text).not.toContain('unrestricted')
+    expect(text).not.toContain('full access')
   })
 
   it('never embeds file contents (AGENTS.md summaries are out of scope)', () => {
