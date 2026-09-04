@@ -15,12 +15,19 @@ import {
 } from '../src/context-injection.ts'
 import type { WorkspaceDirs } from '../src/dirs-config.ts'
 
-/** A minimal fake session surface: header cwd + event log. */
+/**
+ * A minimal fake session surface mirroring the real dsh `Session` shape:
+ * header cwd, `surface.nodes` seqs, and an `eventAt` resolver (the real
+ * Session exposes NO `events` array). `eventAt(seq)` returns the event whose
+ * log position is `seq`.
+ */
 function fakeSession(cwd: string | undefined, surfaceNodes: number[] = [], events: SessionEvent[] = []) {
   return {
     header: { cwd },
     surface: { nodes: surfaceNodes },
-    events,
+    eventAt(seq: number): SessionEvent | undefined {
+      return events[seq]
+    },
   }
 }
 
@@ -97,15 +104,19 @@ describe('composeWorkspaceContextText', () => {
     expect(text).not.toContain('missing')
   })
 
-  it('never claims permissions: the model discovers the boundary by trying', () => {
+  it('notes the additional dirs share the main workspace permission', () => {
+    // The reminder carries a permission hint: the additional dirs are governed
+    // by the same workspace-write boundary as the main workspace. It equates
+    // the additional dirs' permission with the main root's — it does NOT claim
+    // elevation beyond that boundary.
     const text = composeWorkspaceContextText('w1', record(rootA, [rootB]), rootA)
-    expect(text).not.toContain('permission')
-    expect(text).not.toContain('writable')
-    expect(text).not.toContain('read/write')
+    expect(text).toContain('same permissions as the main workspace')
+    // Never over-claims: no read/write on arbitrary files, no full/unrestricted
+    // access, and no claim that the extra dir is the workspace root.
     expect(text).not.toContain('读写权限')
     expect(text).not.toContain('可读写')
-    expect(text).not.toContain('权限')
-    expect(text).not.toContain('共享工作区')
+    expect(text).not.toContain('unrestricted')
+    expect(text).not.toContain('full access')
   })
 
   it('never embeds file contents (AGENTS.md summaries are out of scope)', () => {
@@ -135,6 +146,24 @@ describe('hasIdenticalInjection', () => {
 
   it('returns false on an empty surface', () => {
     expect(hasIdenticalInjection(fakeSession(rootA), probe)).toBe(false)
+  })
+
+  it('reads the surface through eventAt, not an events array', () => {
+    // Regression: the real Session exposes NO `events` array — only
+    // `eventAt(seq)`. The fake here deliberately has no `events` field; dedup
+    // must still resolve the surface node.
+    const session = fakeSession(rootA, [0], [userMessageEvent('same')])
+    expect('events' in session).toBe(false)
+    expect(hasIdenticalInjection(session, probe)).toBe(true)
+  })
+
+  it('compares against the newest plugin reminder when several exist', () => {
+    // A stale identical reminder further up is superseded by a newer different
+    // one: the model is out of date, so an identical top-of-history message is
+    // not a reason to skip.
+    const nodes = [0, 1]
+    const events = [userMessageEvent('same'), userMessageEvent('different')]
+    expect(hasIdenticalInjection(fakeSession(rootA, nodes, events), probe)).toBe(false)
   })
 })
 
@@ -271,5 +300,47 @@ describe('foldWorkspaceContext', () => {
     expect(folded.kind).toBe('enter')
     if (folded.kind !== 'enter') return
     expect(folded.messages).toHaveLength(1)
+  })
+
+  it('does not re-inject on a later user message when the directory set is unchanged', () => {
+    // Regression for "inject after every user message": once the reminder is on
+    // the surface (an unchanged session), a subsequent user message must not
+    // fold another identical reminder. The real Session resolves surface nodes
+    // through eventAt; the fixture carries the already-injected reminder.
+    writeConfig({ w1: record(rootA, [rootB]) })
+    const text = composeWorkspaceContextText('w1', record(rootA, [rootB]), rootA)
+    // Session already holds the reminder on its surface (seq 0).
+    const session = fakeSession(rootA, [0], [userMessageEvent(text)])
+    const user = message('hello again')
+    const folded = foldWorkspaceContext(enter(user), [user], session)
+    expect(folded.kind).toBe('enter')
+    if (folded.kind !== 'enter') return
+    expect(folded.messages).toHaveLength(1)
+  })
+
+  it('re-folds only once when the set changes, then settles back to no-op', () => {
+    // End-to-end: seed with rootA only, add rootB via the record change, then a
+    // later message with the (now updated) set unchanged must not fold again.
+    writeConfig({ w1: record(rootA, [rootB]) })
+    const oldText = composeWorkspaceContextText('w1', record(rootA, []), rootA)
+    // The surface already carries the OLD reminder (before rootB was added).
+    const session = fakeSession(rootA, [0], [userMessageEvent(oldText)])
+
+    const changed = message('the dirs changed')
+    const firstFold = foldWorkspaceContext(enter(changed), [changed], session)
+    expect(firstFold.kind).toBe('enter')
+    if (firstFold.kind !== 'enter') return
+    // Newest reminder differs → one injection carrying the updated list.
+    expect(firstFold.messages).toHaveLength(2)
+
+    // After that injection lands on the surface, another unchanged user message
+    // must not fold a duplicate.
+    const currentText = composeWorkspaceContextText('w1', record(rootA, [rootB]), rootA)
+    const resumed = fakeSession(rootA, [0], [userMessageEvent(currentText)])
+    const again = message('unchanged after update')
+    const secondFold = foldWorkspaceContext(enter(again), [again], resumed)
+    expect(secondFold.kind).toBe('enter')
+    if (secondFold.kind !== 'enter') return
+    expect(secondFold.messages).toHaveLength(1)
   })
 })
