@@ -13,7 +13,7 @@ import { act } from 'react-dom/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import type { SpacesApi } from '../src/client/api.ts'
-import type { ClientWorkspacesService, ClientWorkspaceView } from '../src/client/context.ts'
+import type { ClientWorkspacesService, ClientWorkspaceView, UiWorkspaceService } from '../src/client/context.ts'
 import { WorkspaceDialog } from '../src/client/workspace-dialog.tsx'
 import { mountWorkspaceMenuManageEntry, MENU_MANAGE_SELECTOR, MENU_OPEN_DIRECTORY_SELECTOR, DIALOG_SELECTOR } from '../src/client/workspace-menu.ts'
 
@@ -39,6 +39,21 @@ function fakeWorkspaces(picked: string | null = null):
       create: async () => ({ workspaceId: 'w-created' }),
     },
     picks,
+  }
+}
+
+/** The core DSH uiWorkspace service face (native directory picker). */
+function fakeUiWorkspace(picked: string | null):
+  { service: UiWorkspaceService; calls: { count: number } } {
+  const calls = { count: 0 }
+  return {
+    service: {
+      pickDirectory: async () => {
+        calls.count += 1
+        return picked
+      },
+    },
+    calls,
   }
 }
 
@@ -296,7 +311,35 @@ describe('WorkspaceDialog', () => {
     container.remove()
   })
 
-  it('adds an additional dir through the native picker', async () => {
+  it('adds an additional dir through the native uiWorkspace picker', async () => {
+    const picked = 'E:\\picked'
+    const fake = fakeApi({ w1: [] })
+    const native = fakeUiWorkspace(picked)
+    const container = document.createElement('div')
+    document.body.appendChild(container)
+    const root = createRoot(container)
+    await act(async () => {
+      root.render(createElement(WorkspaceDialog, {
+        workspace: workspace(),
+        api: fake.api,
+        workspaces: fakeWorkspaces(picked).service,
+        uiWorkspace: native.service,
+        onClose: () => {},
+      }))
+    })
+    await act(async () => {})
+    expect(container.textContent).toContain('还没有附加可写目录')
+    clickButton(container, '添加附加目录')
+    await act(async () => {})
+    // The native picker ran; the plugin's own HTTP pick route is bypassed.
+    expect(native.calls.count).toBe(1)
+    expect(fake.dirsByWorkspace.w1).toEqual([picked])
+    expect(fake.calls).toEqual([{ op: 'setDirs', workspaceId: 'w1', dirs: [picked] }])
+    root.unmount()
+    container.remove()
+  })
+
+  it('falls back to the plugin pick route when uiWorkspace is absent', async () => {
     const picked = 'E:\\picked'
     const fake = fakeApi({ w1: [] }, picked)
     const container = document.createElement('div')
@@ -307,16 +350,39 @@ describe('WorkspaceDialog', () => {
         workspace: workspace(),
         api: fake.api,
         workspaces: fakeWorkspaces(picked).service,
-
         onClose: () => {},
       }))
     })
     await act(async () => {})
-    expect(container.textContent).toContain('还没有附加可写目录')
     clickButton(container, '添加附加目录')
     await act(async () => {})
     expect(fake.dirsByWorkspace.w1).toEqual([picked])
     expect(fake.calls).toEqual([{ op: 'setDirs', workspaceId: 'w1', dirs: [picked] }])
+    root.unmount()
+    container.remove()
+  })
+
+  it('does not add when the native picker is cancelled', async () => {
+    const fake = fakeApi({ w1: [] })
+    const native = fakeUiWorkspace(null)
+    const container = document.createElement('div')
+    document.body.appendChild(container)
+    const root = createRoot(container)
+    await act(async () => {
+      root.render(createElement(WorkspaceDialog, {
+        workspace: workspace(),
+        api: fake.api,
+        workspaces: fakeWorkspaces(null).service,
+        uiWorkspace: native.service,
+        onClose: () => {},
+      }))
+    })
+    await act(async () => {})
+    clickButton(container, '添加附加目录')
+    await act(async () => {})
+    expect(native.calls.count).toBe(1)
+    expect(fake.calls).toHaveLength(0)
+    expect(fake.dirsByWorkspace.w1).toEqual([])
     root.unmount()
     container.remove()
   })
@@ -331,6 +397,7 @@ describe('WorkspaceDialog', () => {
         workspace: workspace(),
         api: fake.api,
         workspaces: fakeWorkspaces(ROOT_B).service,
+        uiWorkspace: fakeUiWorkspace(ROOT_B).service,
         onClose: () => {},
       }))
     })

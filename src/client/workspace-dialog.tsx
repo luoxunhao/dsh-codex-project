@@ -72,7 +72,15 @@ export function WorkspaceDialog(props: WorkspaceDialogProps): ReactNode {
   }
 
   const addDirectory = (): Promise<void> => run(async () => {
-    const picked = await api.pickDirectory()
+    // Prefer the DSH native directory picker (uiWorkspace.pickDirectory): it
+    // renders inside the app, so it works regardless of the host process's
+    // window station. The plugin's PowerShell /pick-directory route only
+    // spawns a WinForms dialog in the host session, which cannot show when
+    // dsh web runs without an interactive desktop — keep it as a fallback for
+    // builds without uiWorkspace.
+    const picked = uiWorkspace !== undefined
+      ? await uiWorkspace.pickDirectory()
+      : await api.pickDirectory()
     if (picked === null) return
     const current = dirs ?? []
     if (current.some(candidate => samePath(candidate, picked))) return
