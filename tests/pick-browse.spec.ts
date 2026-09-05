@@ -11,7 +11,7 @@ import { join } from 'node:path'
 
 import { afterAll, afterEach, describe, expect, it } from 'vitest'
 
-import { pickLevel, pickRoots } from '../src/pick-browse.ts'
+import { normalizePickPath, pickLevel, pickRoots } from '../src/pick-browse.ts'
 import { DirsStore } from '../src/dirs-store.ts'
 import type { WorkspaceRegistryFace } from '../src/dirs-store.ts'
 import { dirsApi } from '../src/dirs-api.ts'
@@ -102,5 +102,35 @@ describe('pick routes', () => {
     process.env.DSH_CODEX_PROJECT_CONFIG = configPath
     const response = await dirsApi(store, registry, 'POST', '/codex-project/api/pick-list', {})
     expect(response.status).toBe(405)
+  })
+})
+
+describe('normalizePickPath (win32 Git-Bash roots)', () => {
+  it('maps /c /d and nested Git-Bash roots to native drive paths', () => {
+    expect(normalizePickPath('/c', 'win32')).toBe('C:\\')
+    expect(normalizePickPath('/d', 'win32')).toBe('D:\\')
+    expect(normalizePickPath('/c/Users/me', 'win32')).toBe('C:\\Users\\me')
+    expect(normalizePickPath('/c/Program Files', 'win32')).toBe('C:\\Program Files')
+    // lowercase drive letter → uppercase, forward slashes → backslashes.
+    expect(normalizePickPath('/d/foo/bar', 'win32')).toBe('D:\\foo\\bar')
+  })
+
+  it('accepts native windows drive forms', () => {
+    expect(normalizePickPath('C:\\Users\\me', 'win32')).toBe('C:\\Users\\me')
+    expect(normalizePickPath('c:/users/me', 'win32')).toBe('C:\\users\\me')
+    expect(normalizePickPath('C:', 'win32')).toBe('C:\\')
+    expect(normalizePickPath('c:\\', 'win32')).toBe('C:\\')
+  })
+
+  it('returns undefined for non-absolute or empty input on win32', () => {
+    expect(normalizePickPath('', 'win32')).toBeUndefined()
+    expect(normalizePickPath('relative/dir', 'win32')).toBeUndefined()
+    expect(normalizePickPath('Users/me', 'win32')).toBeUndefined()
+  })
+
+  it('passes absolute paths through on posix and rejects the rest', () => {
+    expect(normalizePickPath('/home/me', 'linux')).toBe('/home/me')
+    expect(normalizePickPath('/c/Users', 'linux')).toBe('/c/Users') // a real posix path, not a drive
+    expect(normalizePickPath('home/me', 'linux')).toBeUndefined()
   })
 })

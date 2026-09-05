@@ -10,10 +10,16 @@
  * let the user point the add-dir action at an arbitrary local folder, the same
  * trust the native picker already grants.
  *
+ * Path input on Windows accepts BOTH native forms (`C:\`, `C:/Users/...`) and
+ * Git-Bash / MSYS Linux-style roots (`/c`, `/d`, `/c/Users/...`) via
+ * {@link normalizePickPath}, so a Win10 user can type `/c` or `/d` to jump to a
+ * drive root.
+ *
  * Two operations:
  *  - roots: the navigable top level — drive letters on Windows, `/` elsewhere
  *    (plus the OS home for a convenient anchor).
- *  - list: one absolute directory's subdirectories plus its parent path.
+ *  - list: one directory's subdirectories plus its parent path, accepting any
+ *    of the normalized input forms.
  * @module dsh-codex-project/pick-browse
  */
 
@@ -48,6 +54,48 @@ export function pickRoots(): PickEntry[] {
   return roots
 }
 
+/**
+ * Normalize a user-typed path to an absolute Windows path (on win32) or pass
+ * through an absolute posix path elsewhere.
+ *
+ * Accepted forms on Windows (case-insensitive drive letter):
+ *  - Git-Bash / MSYS Linux-style: `/c`, `/c/Users/foo`, `/d` → `C:\`, `C:\Users\foo`, `D:\`
+ *  - native drive forms: `C:\`, `C:/Users/foo`, `c:/foo`, `c:`
+ *
+ * Returns the normalized absolute path, or `undefined` when the input is not a
+ * recognizable absolute path for this platform.
+ * @param input - the raw path the user typed.
+ * @param platform - the target platform (defaults to the host's), injectable
+ *   so the win32 Git-Bash mapping is testable on any platform.
+ * @returns the normalized absolute path, or undefined.
+ */
+export function normalizePickPath(input: string, platform: NodeJS.Platform = process.platform): string | undefined {
+  const raw = input.trim()
+  if (raw === '') return undefined
+  if (platform === 'win32') {
+    const backslash = raw.replace(/\//g, '\\')
+    // Git-Bash "/c", "/c\rest" → "\c", "\c\rest" after the slash swap.
+    const gitBash = /^\\([a-zA-Z])(?:\\(.*))?$/.exec(backslash)
+    if (gitBash !== null) {
+      const drive = `${gitBash[1]!.toUpperCase()}:\\`
+      const rest = gitBash[2]
+      return rest === undefined || rest === '' ? drive : `${drive}${rest}`
+    }
+    // Native "C:" with optional "\\" or "C:\rest" / "c:/rest".
+    const native = /^([a-zA-Z]):(\\?)(.*)$/.exec(backslash)
+    if (native !== null) {
+      const drive = `${native[1]!.toUpperCase()}:`
+      const hasSep = native[2] !== ''
+      const rest = native[3]
+      if (rest === '') return `${drive}\\`
+      return `${drive}\\${rest}`
+    }
+    return undefined
+  }
+  // POSIX: only an absolute path makes sense.
+  return raw.startsWith('/') ? raw : undefined
+}
+
 /** One directory level: the current dir, its parent, and its subdirectories. */
 export interface PickLevel {
   path: string
@@ -68,19 +116,25 @@ function directoryExists(path: string): boolean {
 }
 
 /**
- * List one absolute directory level for the picker.
- * @param path - an absolute directory path to browse.
+ * List one directory level for the picker, accepting any of the input forms
+ * {@link normalizePickPath} understands (`/c`, `/c/Users/foo`, `C:\`, ...).
+ * @param path - a directory path to browse (native or Git-Bash style).
  * @returns the level's subdirectories, parent, and home anchor.
  * @throws when the path is not an absolute existing directory.
  */
 export async function pickLevel(path: string): Promise<PickLevel> {
-  if (!isAbsolute(path)) throw new Error('path must be absolute')
-  if (!directoryExists(path)) throw new Error(`not an existing directory: ${path}`)
-  const listing = await listProjectDirectory(path, 2000)
+  const normalized = normalizePickPath(path)
+  if (normalized === undefined || !isAbsolute(normalized)) {
+    throw new Error('path must be an absolute directory')
+  }
+  if (!directoryExists(normalized)) {
+    throw new Error(`not an existing directory: ${normalized}`)
+  }
+  const listing = await listProjectDirectory(normalized, 2000)
   const home = homedir()
   return {
     path: listing.path,
-    parent: topLevelParent(path, home),
+    parent: topLevelParent(normalized, home),
     home,
     dirs: listing.entries.filter(entry => entry.isDir).map(entry => ({ name: entry.name, path: entry.path })),
   }

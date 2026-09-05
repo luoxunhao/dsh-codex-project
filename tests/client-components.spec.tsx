@@ -60,8 +60,14 @@ function fakeApi(
   const openedDirs: string[] = []
   const listed: string[] = []
   // pickList mirrors the host: subdir names under `path` become absolute children.
-  const children = (path: string): PickRoot[] =>
-    (fs[path] ?? []).map(name => ({ name, path: `${path}\\${name}` }))
+  // A minimal Git-Bash-root emulation maps "/d" → "D:\" so the path-input jump is
+  // testable without the host's real normalizePickPath (covered in pick-browse.spec).
+  const joinPath = (parent: string, name: string): string =>
+    parent.endsWith('\\') ? `${parent}${name}` : `${parent}\\${name}`
+  const children = (rawPath: string): PickRoot[] => {
+    const path = /^\/[a-zA-Z]$/.test(rawPath) ? `${rawPath[1]!.toUpperCase()}:\\` : rawPath
+    return (fs[path] ?? []).map(name => ({ name, path: joinPath(path, name) }))
+  }
   return {
     dirsByWorkspace: dirsByWorkspaceCopy,
     calls,
@@ -83,8 +89,9 @@ function fakeApi(
         { name: 'D:\\', path: 'D:\\' },
         { name: `~ (${HOME})`, path: HOME },
       ],
-      pickList: async (path): Promise<PickLevel> => {
-        listed.push(path)
+      pickList: async (rawPath): Promise<PickLevel> => {
+        listed.push(rawPath)
+        const path = /^\/[a-zA-Z]$/.test(rawPath) ? `${rawPath[1]!.toUpperCase()}:\\` : rawPath
         const parent = /^[A-Za-z]:\\$/.test(path) ? null : HOME
         return { path, parent, home: HOME, dirs: children(path) }
       },
@@ -368,6 +375,47 @@ describe('WorkspaceDialog', () => {
     await act(async () => {})
     expect(fake.dirsByWorkspace.w1).toEqual([target])
     expect(fake.calls).toEqual([{ op: 'setDirs', workspaceId: 'w1', dirs: [target] }])
+    root.unmount()
+    container.remove()
+  })
+
+  it('jumps to a Git-Bash style drive root typed in the path input', async () => {
+    const fake = fakeApi({ w1: [] }, { 'D:\\': ['data'] })
+    const container = document.createElement('div')
+    document.body.appendChild(container)
+    const root = createRoot(container)
+    await act(async () => {
+      root.render(createElement(WorkspaceDialog, {
+        workspace: workspace(),
+        api: fake.api,
+        workspaces: fakeWorkspaces().service,
+        onClose: () => {},
+      }))
+    })
+    await act(async () => {})
+    clickButton(container, '添加附加目录')
+    await act(async () => {})
+    // Type a Git-Bash root and press Enter → the picker asks pickList('/d').
+    const input = container.querySelector<HTMLInputElement>('.dsh-cxp-folder-picker-input')!
+    const setValue = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')!.set!
+    await act(async () => {
+      setValue.call(input, '/d')
+      input.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+    await act(async () => {
+      input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
+    })
+    await act(async () => {})
+    expect(fake.listed).toContain('/d')
+    // The host-normalized drive root (D:\) is now displayed and browsable.
+    expect(container.textContent).toContain('D:\\')
+    clickButton(container, 'data')
+    await act(async () => {})
+    expect(container.textContent).toContain('D:\\data')
+    clickButton(container, '选择当前目录')
+    await act(async () => {})
+    expect(fake.dirsByWorkspace.w1).toEqual(['D:\\data'])
+    expect(fake.calls).toEqual([{ op: 'setDirs', workspaceId: 'w1', dirs: ['D:\\data'] }])
     root.unmount()
     container.remove()
   })

@@ -196,6 +196,28 @@ const CSS = `
   color: var(--dsw-alias-label-primary);
   min-width: 0;
 }
+[data-dsh-codex-project-dialog] .dsh-cxp-folder-picker-jump {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+}
+[data-dsh-codex-project-dialog] .dsh-cxp-folder-picker-input {
+  flex: 1;
+  min-width: 0;
+  height: 26px;
+  padding: 0 8px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: var(--dsw-alias-bg-layer-2, rgba(128, 128, 128, 0.08));
+  color: var(--dsw-alias-label-primary);
+  font-size: 12px;
+  font-family: var(--dsw-font-family-mono, ui-monospace, SFMono-Regular, Consolas, monospace);
+  outline: none;
+}
+[data-dsh-codex-project-dialog] .dsh-cxp-folder-picker-input:focus {
+  border-color: var(--dsw-alias-focus-ring, #4d8df0);
+}
 [data-dsh-codex-project-dialog] .dsh-cxp-folder-picker-actions {
   display: flex;
   align-items: center;
