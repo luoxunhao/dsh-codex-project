@@ -99,6 +99,8 @@ function fakeApi(
       listDir: async () => ({ path: '', entries: [], truncated: false }),
       readFile: async () => ({ content: '', truncated: false }),
       writeFile: async () => {},
+      searchProject: async () => [],
+      upload: async () => 0,
       fileUrl: (_cwd, path) => `/file?path=${encodeURIComponent(path)}`,
       downloadUrl: (_cwd, path) => `/file?path=${encodeURIComponent(path)}&download=1`,
     },

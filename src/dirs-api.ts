@@ -40,6 +40,13 @@
  *                                              picker; UNFENCED — lets the user
  *                                              grant any folder, like the native
  *                                              picker, but read-only listings)
+ *  - GET    /codex-project/api/search         → recursive file-name search over the
+ *                                              project roots
+ *                                              (?cwd=<path>&query=<name>), fenced
+ *  - POST   /codex-project/api/upload         → write uploaded files under the
+ *                                              project roots
+ *                                              ({ cwd, dir, files: [{ path, contentBase64 }] }),
+ *                                              fenced (bounded file count + total bytes)
  *
  * Errors: 400 for invalid input (bad shape, missing dir, unknown workspace
  * cannot be resolved from the registry), 403 for a path outside a project's
@@ -55,6 +62,7 @@ import { DirsStoreError } from './dirs-store.ts'
 import { canonicalizeDirectory, projectFor } from './project-view.ts'
 import { isWithinRoots, listProjectDirectory } from './project-list.ts'
 import { pickLevel, pickRoots } from './pick-browse.ts'
+import { searchProjectFiles } from './project-search.ts'
 
 /**
  * One API response: HTTP status plus a JSON body, optionally a raw byte
@@ -260,6 +268,20 @@ export async function dirsApi(
         throw new DirsStoreError('invalid', `cannot list "${rawPath}": ${message}`)
       }
     }
+    if (pathname.split('?')[0] === '/codex-project/api/search') {
+      if (method !== 'GET') {
+        return json(405, { ok: false, error: 'method-not-allowed' })
+      }
+      const query = new URL(pathname, 'http://127.0.0.1').searchParams
+      const cwd = query.get('cwd')
+      const needle = query.get('query')
+      if (cwd === null || cwd === '' || needle === null) {
+        throw new DirsStoreError('invalid', 'cwd and query query parameters are required')
+      }
+      const { roots } = await fenceFor(store, cwd)
+      const results = await searchProjectFiles(roots, needle)
+      return ok({ ok: true, results })
+    }
     if (pathname.split('?')[0] === '/codex-project/api/read') {
       if (method !== 'GET') {
         return json(405, { ok: false, error: 'method-not-allowed' })
@@ -309,6 +331,66 @@ export async function dirsApi(
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error)
         throw new DirsStoreError('invalid', `cannot write "${rawPath}": ${message}`)
+      }
+    }
+    if (pathname.split('?')[0] === '/codex-project/api/upload') {
+      if (method !== 'POST') {
+        return json(405, { ok: false, error: 'method-not-allowed' })
+      }
+      if (typeof body !== 'object' || body === null) {
+        throw new DirsStoreError('invalid', 'request body must be an object')
+      }
+      const record = body as Record<string, unknown>
+      const cwd = requireString(record, 'cwd')
+      const dir = requireString(record, 'dir')
+      const rawFiles = record.files
+      if (!Array.isArray(rawFiles)) {
+        throw new DirsStoreError('invalid', 'files must be an array')
+      }
+      const files = rawFiles.map((entry, index) => {
+        const e = entry as Record<string, unknown>
+        const rel = typeof e?.path === 'string' ? e.path : undefined
+        const data = typeof e?.contentBase64 === 'string' ? e.contentBase64 : undefined
+        if (rel === undefined || data === undefined) {
+          throw new DirsStoreError('invalid', `files[${index}] must have a string path and contentBase64`)
+        }
+        return { rel, data }
+      })
+      if (files.length > 200) {
+        throw new DirsStoreError('invalid', 'upload is capped at 200 files')
+      }
+      const { roots } = await fenceFor(store, cwd)
+      if (!(await isWithinRoots(dir, roots))) {
+        throw new DirsStoreError('forbidden', `"${dir}" is outside the project roots`)
+      }
+      try {
+        const { writeFile, mkdir } = await import('node:fs/promises')
+        const { dirname, join } = await import('node:path')
+        let totalBytes = 0
+        for (const { rel, data } of files) {
+          // Normalize the relative path: split on both separators, drop empty
+          // segments, refuse "." / ".." / absolute escapes.
+          const segments = rel.split(/[\\/]/).filter(seg => seg !== '')
+          if (segments.some(seg => seg === '.' || seg === '..') || rel.startsWith('/') || /^[A-Za-z]:/.test(rel)) {
+            throw new DirsStoreError('invalid', `"${rel}" is not a safe relative path`)
+          }
+          const target = join(dir, ...segments)
+          if (!(await isWithinRoots(target, roots))) {
+            throw new DirsStoreError('forbidden', `"${target}" is outside the project roots`)
+          }
+          const bytes = Buffer.from(data, 'base64')
+          totalBytes += bytes.byteLength
+          if (totalBytes > 100 * 1024 * 1024) {
+            throw new DirsStoreError('invalid', 'upload exceeds the 100 MB total cap')
+          }
+          await mkdir(dirname(target), { recursive: true })
+          await writeFile(target, bytes)
+        }
+        return ok({ ok: true, count: files.length })
+      } catch (error) {
+        if (error instanceof DirsStoreError) throw error
+        const message = error instanceof Error ? error.message : String(error)
+        throw new DirsStoreError('invalid', `upload failed: ${message}`)
       }
     }
     if (pathname.split('?')[0] === '/codex-project/api/file') {

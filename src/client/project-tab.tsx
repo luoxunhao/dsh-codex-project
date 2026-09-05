@@ -2,12 +2,16 @@
  * 项目文件夹 tab (registered into better-sidebar): a FILE-TREE-ONLY panel of
  * the project anchored at the current session's cwd — the main workspace root
  * plus every shared additional dir (cross-drive). It mirrors the better-sidebar
- * Files-tab explorer look: lazy directory tree, folder rows that expand in
- * place, file rows that open their preview in a SEPARATE sidebar tab (the
- * plugin's `codex-project:file` tab, which reads through the plugin's
+ * Files-tab explorer look: a toolbar with a file-name SEARCH box + refresh +
+ * upload-files + upload-folder, above a lazy directory tree whose folder rows
+ * expand in place and whose file rows open their preview in a SEPARATE sidebar
+ * tab (the plugin's `codex-project:file` tab, which reads through the plugin's
  * multi-root routes — so cross-drive shared dirs preview fine). No inline
  * preview/editor pane lives in this tab; clicking a file hands it to
- * `openPreview`.
+ * `openPreview`. The search box runs a debounced recursive file-name search
+ * over the project roots and shows a flat result list (each opens the preview
+ * tab); uploads write files/folders into the project's main root via the
+ * plugin's fenced /upload route.
  *
  * With no shared config the tab falls back to the session's own working
  * directory as a single root, so the tree always has content. The tree is
@@ -23,7 +27,7 @@
  * @module dsh-codex-project/client/project-tab
  */
 
-import { useCallback, useEffect, useState, type MouseEvent, type ReactNode } from 'react'
+import { useCallback, useEffect, useRef, useState, type MouseEvent, type ReactNode } from 'react'
 import {
   IconCodeOutline16,
   IconCopyOutline16,
@@ -31,13 +35,15 @@ import {
   IconFolderOpen16,
   IconFolderOpenOutline16,
   IconLinkOutline16,
+  IconPaperclipOutline16,
   IconRefreshOutline16,
+  IconSearchOutline16,
   IconWarningOutline16,
   Menu,
   writeClipboard,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 
-import type { ProjectEntry, ProjectListing, ProjectView, SpacesApi } from './api.ts'
+import type { ProjectEntry, ProjectListing, ProjectSearchResult, ProjectView, SpacesApi, UploadFile } from './api.ts'
 import type { ClientRuntimeContext, SidebarTabScope } from './context.ts'
 import { insertFileReference } from './file-reference.ts'
 import { basename, relativePath, resolvePath } from './paths.ts'
@@ -92,6 +98,70 @@ export function ProjectTab(props: ProjectTabProps): ReactNode {
 
   useEffect(() => { void refresh() }, [refresh, reloadKey])
 
+  // --- Files-style toolbar state: search + upload ---
+  const [query, setQuery] = useState('')
+  const [searchResults, setSearchResults] = useState<ProjectSearchResult[] | null>(null)
+  const [searching, setSearching] = useState(false)
+  const [uploadStatus, setUploadStatus] = useState<{ text: string; failed: boolean } | null>(null)
+  const [uploading, setUploading] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const folderInputRef = useRef<HTMLInputElement>(null)
+  const searchTimer = useRef<number | undefined>(undefined)
+
+  // Debounced project file-name search while the query is non-empty.
+  const needle = query.trim()
+  useEffect(() => {
+    if (cwd === undefined || cwd === '') return
+    if (needle === '') { setSearchResults(null); setSearching(false); return }
+    setSearching(true)
+    window.clearTimeout(searchTimer.current)
+    searchTimer.current = window.setTimeout(() => {
+      void api.searchProject(cwd, needle).then(
+        (results) => { setSearchResults(results); setSearching(false) },
+        (reason) => {
+          setSearchResults([])
+          setSearching(false)
+          setUploadStatus({ text: reason instanceof Error ? reason.message : String(reason), failed: true })
+        },
+      )
+    }, 250)
+    return () => { window.clearTimeout(searchTimer.current) }
+  }, [api, cwd, needle])
+
+  /** Encode one File into the base64 upload shape, walking into subfolders for a
+   *  directory selection (browser fills `webkitRelativePath`). */
+  const readFileUpload = (file: File): Promise<UploadFile> => new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onerror = () => { reject(reader.error ?? new Error('read failed')) }
+    reader.onload = () => {
+      const base64 = typeof reader.result === 'string' ? reader.result.split(',')[1] ?? '' : ''
+      // webkitRelativePath is posix; plain files upload into the dir root.
+      const rel = file.webkitRelativePath && file.webkitRelativePath !== ''
+        ? file.webkitRelativePath
+        : file.name
+      resolve({ path: rel, contentBase64: base64 })
+    }
+    reader.readAsDataURL(file)
+  })
+
+  const startUpload = async (files: FileList | null): Promise<void> => {
+    if (files === null || files.length === 0 || cwd === undefined) return
+    const dir = project !== null && project !== undefined ? project.path : cwd
+    setUploading(true)
+    setUploadStatus(null)
+    try {
+      const uploads = await Promise.all(Array.from(files).map(readFileUpload))
+      const count = await api.upload(cwd, dir, uploads)
+      setUploadStatus({ text: `已上传 ${count} 个文件`, failed: false })
+      setReloadKey(key => key + 1)
+      setQuery('')
+    } catch (reason) {
+      setUploadStatus({ text: reason instanceof Error ? reason.message : String(reason), failed: true })
+    } finally {
+      setUploading(false)
+    }
+  }
+
   const openDir = useCallback((path: string) => {
     void api.openDirectory(path).catch((reason) => {
       console.error('[dsh-codex-project] open directory failed:', reason)
@@ -138,13 +208,31 @@ export function ProjectTab(props: ProjectTabProps): ReactNode {
     setRowMenu({ path, isFile, x: event.clientX, y: event.clientY })
   }
 
-  const header = (
-    <div className="dsh-cxp-tab-header">
-      <span className="dsh-cxp-tab-title">项目文件夹</span>
-      <span style={{ flex: 1 }} />
-      <button type="button" className="dsh-cxp-tab-icon-btn" title="刷新" onClick={() => { setReloadKey(key => key + 1) }}>
-        <IconRefreshOutline16 />
+  // The Files-style toolbar (replaces the old "项目文件夹" title header).
+  const toolbar = (
+    <div className="dsh-cxp-files-toolbar">
+      <div className="dsh-cxp-files-search">
+        <IconSearchOutline16 size={14} />
+        <input
+          className="dsh-cxp-files-search-input"
+          value={query}
+          placeholder="搜索文件名…"
+          spellCheck={false}
+          onChange={(event) => { setQuery(event.target.value) }}
+        />
+        {searching && <span className="dsh-cxp-files-search-spin">…</span>}
+      </div>
+      <button type="button" className="dsh-cxp-tab-icon-btn" title="刷新" disabled={uploading} onClick={() => { setReloadKey(key => key + 1) }}>
+        <IconRefreshOutline16 size={15} />
       </button>
+      <button type="button" className="dsh-cxp-tab-icon-btn" title="上传文件" disabled={uploading || cwd === undefined} onClick={() => { fileInputRef.current?.click() }}>
+        <IconPaperclipOutline16 size={15} />
+      </button>
+      <button type="button" className="dsh-cxp-tab-icon-btn" title="上传文件夹" disabled={uploading || cwd === undefined} onClick={() => { folderInputRef.current?.click() }}>
+        <IconFolderOpen16 size={15} />
+      </button>
+      <input ref={fileInputRef} type="file" multiple style={{ display: 'none' }} onChange={(e) => { void startUpload(e.target.files); e.target.value = '' }} />
+      <input ref={folderInputRef} type="file" multiple {...{ webkitdirectory: '' } as object} style={{ display: 'none' }} onChange={(e) => { void startUpload(e.target.files); e.target.value = '' }} />
     </div>
   )
 
@@ -153,6 +241,29 @@ export function ProjectTab(props: ProjectTabProps): ReactNode {
     body = <div className="dsh-cxp-tab-note dsh-cxp-tab-error">{error}</div>
   } else if (project === undefined) {
     body = <div className="dsh-cxp-tab-note">加载中…</div>
+  } else if (needle !== '') {
+    // Search mode: a flat results list replaces the tree.
+    const results = searchResults
+    body = (
+      <div className="dsh-cxp-files-search-results">
+        {results === null || searching
+          ? <div className="dsh-cxp-tab-note">搜索中…</div>
+          : results.length === 0
+            ? <div className="dsh-cxp-tab-note">无匹配文件</div>
+            : results.map(result => (
+              <button
+                type="button"
+                key={result.path}
+                className="dsh-cxp-files-search-row"
+                title={result.path}
+                onClick={() => { openPreview(result.path) }}
+              >
+                <FileGlyph />
+                <span className="dsh-cxp-files-search-name">{result.path}</span>
+              </button>
+            ))}
+      </div>
+    )
   } else {
     // With no shared config, fall back to the session's own working directory
     // as a single root — the tree always has something to show.
@@ -194,7 +305,12 @@ export function ProjectTab(props: ProjectTabProps): ReactNode {
 
   return (
     <div className="dsh-cxp-tab" data-dsh-codex-project-tab>
-      {header}
+      {toolbar}
+      {uploadStatus !== null && (
+        <div className={uploadStatus.failed ? 'dsh-cxp-files-status dsh-cxp-files-status-fail' : 'dsh-cxp-files-status'} title={uploadStatus.text}>
+          {uploadStatus.text}
+        </div>
+      )}
       {body}
       {/* One shared context menu, positioned at the right-click cursor (portal
           so the tree's overflow clip cannot crop it). */}
@@ -339,6 +455,18 @@ function DirNode(props: {
   )
 }
 
+/** A compact document/file glyph (mirrors better-sidebar's VscFile). The dsh
+ *  code icon (`IconCodeOutline16`) is a `#`-shaped hashtag, so file rows used
+ *  it directly would each show a `#`; a proper file icon is drawn inline here. */
+function FileGlyph(): ReactNode {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <path d="M4.5 1h4.2L12 4.3v9.2a1 1 0 0 1-1 1h-6.5a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1Z" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" />
+      <path d="M8.6 1v3.5H12" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
 /** A file row: opens its preview in a separate tab on click. */
 function FileRow(props: {
   entry: ProjectEntry
@@ -365,7 +493,7 @@ function FileRow(props: {
       }}
       onContextMenu={(event) => { openRowMenu(event, entry.path, true) }}
     >
-      <span className="dsh-cxp-tree-icon"><IconCodeOutline16 size={14} /></span>
+      <span className="dsh-cxp-tree-icon"><FileGlyph /></span>
       <span className="dsh-cxp-tree-name">{entry.name}</span>
       {entry.isSymlink && <IconLinkOutline16 size={12} className="dsh-cxp-tree-symlink" />}
       {rowAction(entry.path)}

@@ -36,14 +36,17 @@ function fakeApi(project: ProjectView | null, listings: Record<string, ProjectLi
   openedDirs: string[]
   listed: Array<{ cwd: string; path: string }>
   read: Array<{ cwd: string; path: string }>
+  searches: string[]
 } {
   const openedDirs: string[] = []
   const listed: Array<{ cwd: string; path: string }> = []
   const read: Array<{ cwd: string; path: string }> = []
+  const searches: string[] = []
   return {
     openedDirs,
     listed,
     read,
+    searches,
     api: {
       list: async () => ({}),
       getDirs: async () => [],
@@ -60,6 +63,13 @@ function fakeApi(project: ProjectView | null, listings: Record<string, ProjectLi
         read.push({ cwd, path })
         return { content: '# hello', truncated: false }
       },
+      searchProject: async (_cwd, query) => {
+        searches.push(query)
+        return query === 'readme'
+          ? [{ path: `${ROOT_A}\\readme.md`, name: 'readme.md' }]
+          : []
+      },
+      upload: async () => 0,
       writeFile: async () => {},
       fileUrl: (_cwd, path) => `/file?path=${encodeURIComponent(path)}`,
       downloadUrl: (_cwd, path) => `/file?path=${encodeURIComponent(path)}&download=1`,
@@ -207,6 +217,60 @@ describe('ProjectTab', () => {
     const { tab } = await renderTab(fake.api, fakeCtx().ctx)
     expect(tab.querySelector('.dsh-cxp-preview-pane')).toBeNull()
     expect(tab.querySelector('.dsh-cxp-tab-path-input')).toBeNull()
+  })
+
+  it('renders a Files-style toolbar (no "项目文件夹" title; search + refresh + upload)', async () => {
+    const fake = fakeApi(PROJECT)
+    const { tab } = await renderTab(fake.api, fakeCtx().ctx)
+    // No literal title in the tab content anymore.
+    expect(tab.textContent).not.toContain('项目文件夹')
+    // Toolbar controls are present.
+    expect(tab.querySelector('.dsh-cxp-files-search-input')).not.toBeNull()
+    const toolbar = tab.querySelector('.dsh-cxp-files-toolbar')!
+    const buttons = Array.from(toolbar.querySelectorAll('button')).map(b => b.title)
+    expect(buttons).toEqual(expect.arrayContaining(['刷新', '上传文件', '上传文件夹']))
+  })
+
+  it('file rows use a document icon, not a hashtag code glyph', async () => {
+    const listing: ProjectListing = {
+      path: ROOT_A,
+      entries: [
+        { name: 'readme.md', path: `${ROOT_A}\\readme.md`, isDir: false, hidden: false, isSymlink: false, broken: false },
+      ],
+      truncated: false,
+    }
+    const fake = fakeApi(PROJECT, { [ROOT_A]: listing })
+    const { tab } = await renderTab(fake.api, fakeCtx().ctx)
+    await act(async () => {
+      rowByText(tab, 'proj (主)').click()
+    })
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)) })
+    const fileRow = rowByText(tab, 'readme.md')
+    // The file's leading glyph is an SVG document icon, never a '#/hash glyph.
+    expect(fileRow.querySelector('svg')).not.toBeNull()
+    expect(fileRow.textContent!.replace('@', '')).toContain('readme.md')
+  })
+
+  it('runs a debounced project search from the toolbar and shows results', async () => {
+    const fake = fakeApi(PROJECT)
+    const { tab, opened } = await renderTab(fake.api, fakeCtx().ctx)
+    const input = tab.querySelector<HTMLInputElement>('.dsh-cxp-files-search-input')!
+    await act(async () => {
+      const setValue = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')!.set!
+      setValue.call(input, 'readme')
+      input.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+    // Allow the 250ms debounce + search request to settle.
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 320)) })
+    await act(async () => {})
+    expect(fake.searches).toEqual(['readme'])
+    const resultRow = Array.from(tab.querySelectorAll('.dsh-cxp-files-search-row'))
+      .find(row => row.textContent?.includes('readme.md'))
+    expect(resultRow).toBeDefined()
+    await act(async () => {
+      resultRow!.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    })
+    expect(opened).toEqual([`${ROOT_A}\\readme.md`])
   })
 
   it('references a file in chat via the hover @ button', async () => {

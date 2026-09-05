@@ -70,6 +70,20 @@ export interface PickLevel {
   home: string
 }
 
+/** One recursive project file-name search hit. */
+export interface ProjectSearchResult {
+  path: string
+  name: string
+}
+
+/** One uploaded file: a relative path under the target dir + base64 content. */
+export interface UploadFile {
+  /** Relative path under `dir` (posix separators; subdirs allowed). */
+  path: string
+  /** Base64-encoded file bytes. */
+  contentBase64: string
+}
+
 /** The dirs API surface. */
 export interface SpacesApi {
   /** All workspace records (id → { path, dirs }). */
@@ -103,6 +117,17 @@ export interface SpacesApi {
    * on the host). `cwd` resolves the project; `path` is the absolute dir.
    */
   listDir(cwd: string, path: string): Promise<ProjectListing>
+  /**
+   * Recursively search the project roots for entries whose name contains
+   * `query` (case-insensitive), fenced on the host.
+   */
+  searchProject(cwd: string, query: string): Promise<ProjectSearchResult[]>
+  /**
+   * Upload files into `dir` (a project root) — each file's `path` is relative
+   * to `dir` and its bytes are base64. Fenced to the project roots on the host.
+   * Resolves with the number of files written.
+   */
+  upload(cwd: string, dir: string, files: UploadFile[]): Promise<number>
   /**
    * Read a text file (fenced to the project roots). `cwd` resolves the
    * project; `path` is the absolute file. Long files are capped on the host
@@ -170,6 +195,14 @@ export function createSpacesApi(base = '/codex-project/api'): SpacesApi {
     listDir: async (cwd, path) => {
       const parsed = await request<ProjectListing>(base, 'GET', `/list?cwd=${enc(cwd)}&path=${enc(path)}`)
       return parsed
+    },
+    searchProject: async (cwd, query) => {
+      const r = await request<{ results: ProjectSearchResult[] }>(base, 'GET', `/search?cwd=${enc(cwd)}&query=${enc(query)}`)
+      return r.results
+    },
+    upload: async (cwd, dir, files) => {
+      const r = await request<{ count: number }>(base, 'POST', '/upload', { cwd, dir, files })
+      return r.count
     },
     readFile: async (cwd, path) => {
       const parsed = await request<{ content: string; truncated: boolean }>(base, 'GET', `/read?cwd=${enc(cwd)}&path=${enc(path)}`)

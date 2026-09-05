@@ -298,6 +298,91 @@ const CSS = `
   padding: 0 8px 0 12px;
   flex: none;
 }
+[data-dsh-codex-project-tab] .dsh-cxp-files-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 36px;
+  padding: 0 8px;
+  flex: none;
+  border-bottom: 1px solid var(--dsw-alias-border-l1);
+}
+[data-dsh-codex-project-tab] .dsh-cxp-files-search {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  padding: 0 8px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: var(--dsw-alias-bg-layer-2, rgba(128, 128, 128, 0.08));
+  color: var(--dsw-alias-label-tertiary);
+}
+[data-dsh-codex-project-tab] .dsh-cxp-files-search:focus-within {
+  border-color: var(--dsw-alias-focus-ring, #4d8df0);
+}
+[data-dsh-codex-project-tab] .dsh-cxp-files-search-input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  color: var(--dsw-alias-label-primary);
+  font-size: 12px;
+  outline: none;
+}
+[data-dsh-codex-project-tab] .dsh-cxp-files-search-spin {
+  font-size: 12px;
+  color: var(--dsw-alias-label-tertiary);
+}
+[data-dsh-codex-project-tab] .dsh-cxp-files-search-results {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+[data-dsh-codex-project-tab] .dsh-cxp-files-search-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 30px;
+  padding: 4px 8px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--dsw-alias-label-primary);
+  cursor: pointer;
+  font-size: 12.5px;
+  text-align: left;
+}
+[data-dsh-codex-project-tab] .dsh-cxp-files-search-row:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+[data-dsh-codex-project-tab] .dsh-cxp-files-search-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+[data-dsh-codex-project-tab] .dsh-cxp-files-status {
+  flex: none;
+  font-size: 11.5px;
+  color: var(--dsw-alias-label-secondary);
+  opacity: 0.9;
+  padding: 3px 12px;
+  border-bottom: 1px solid var(--dsw-alias-border-l1);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+[data-dsh-codex-project-tab] .dsh-cxp-files-status-fail {
+  color: #e06c6c;
+}
 [data-dsh-codex-project-tab] .dsh-cxp-tab-title {
   font-size: var(--dsw-font-s-14, 14px);
   font-weight: 600;
