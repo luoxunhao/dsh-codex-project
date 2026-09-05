@@ -46,7 +46,8 @@ function fakeApi(project: ProjectView | null, listings: Record<string, ProjectLi
       getDirs: async () => [],
       setDirs: async (_id, dirs) => [...dirs],
       openDirectory: async (path) => { openedDirs.push(path) },
-      pickDirectory: async () => null,
+      pickRoots: async () => [{ name: 'E:\\', path: 'E:\\' }],
+      pickList: async (path) => ({ path, parent: null, home: 'C:\\Users\\me', dirs: [] }),
       project: async () => project,
       listDir: async (cwd, path) => {
         listed.push({ cwd, path })

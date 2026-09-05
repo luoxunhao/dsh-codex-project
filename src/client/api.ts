@@ -53,6 +53,23 @@ export interface ProjectListing {
   truncated: boolean
 }
 
+/** One in-page picker root or subdirectory (folder-picker navigation). */
+export interface PickRoot {
+  name: string
+  path: string
+}
+
+/** One in-page picker directory level. */
+export interface PickLevel {
+  path: string
+  /** The absolute parent, or null at a top level. */
+  parent: string | null
+  /** Direct subdirectories (dirs-first order). */
+  dirs: PickRoot[]
+  /** The OS home (jump-to anchor). */
+  home: string
+}
+
 /** The dirs API surface. */
 export interface SpacesApi {
   /** All workspace records (id → { path, dirs }). */
@@ -66,7 +83,16 @@ export interface SpacesApi {
    * bypasses any openPath interception by other plugins).
    */
   openDirectory(path: string): Promise<void>
-  pickDirectory(): Promise<string | null>
+  /**
+   * The in-page folder-picker's navigable roots (drive letters / home).
+   */
+  pickRoots(): Promise<PickRoot[]>
+  /**
+   * List one arbitrary absolute directory level for the in-page picker
+   * (subdirectories + parent). UNFENCED: lets the user grant any local folder,
+   * like the native picker — listings only, never file contents.
+   */
+  pickList(path: string): Promise<PickLevel>
   /**
    * The project anchored at a session cwd (main root + shared dirs), or null
    * when no record anchors that cwd (the 项目文件夹 tab's empty state).
@@ -129,7 +155,14 @@ export function createSpacesApi(base = '/codex-project/api'): SpacesApi {
       return parsed.dirs
     },
     openDirectory: async (path) => { await request<{ ok: boolean }>(base, 'POST', '/open-directory', { path }) },
-    pickDirectory: async () => { const r = await request<{ path: string | null } | { error: string }>(base, 'POST', '/pick-directory', {}); return 'path' in r ? r.path : null },
+    pickRoots: async () => {
+      const r = await request<{ roots: PickRoot[] }>(base, 'GET', '/pick-roots')
+      return r.roots
+    },
+    pickList: async (path) => {
+      const r = await request<PickLevel>(base, 'GET', `/pick-list?path=${enc(path)}`)
+      return r
+    },
     project: async (cwd) => {
       const parsed = await request<{ project: ProjectView | null }>(base, 'GET', `/project?cwd=${enc(cwd)}`)
       return parsed.project

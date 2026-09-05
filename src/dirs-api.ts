@@ -33,6 +33,13 @@
  *                                            fenced; download sets an
  *                                            attachment disposition
  *  - POST   /codex-project/api/open-directory → native-open a folder (kept)
+ *  - GET    /codex-project/api/pick-roots     → the in-page picker's navigable
+ *                                              roots (drive letters / home)
+ *  - GET    /codex-project/api/pick-list      → one arbitrary absolute directory's
+ *                                              subdirectories + parent (in-page
+ *                                              picker; UNFENCED — lets the user
+ *                                              grant any folder, like the native
+ *                                              picker, but read-only listings)
  *
  * Errors: 400 for invalid input (bad shape, missing dir, unknown workspace
  * cannot be resolved from the registry), 403 for a path outside a project's
@@ -47,6 +54,7 @@ import type { DirsStore, WorkspaceRegistryFace } from './dirs-store.ts'
 import { DirsStoreError } from './dirs-store.ts'
 import { canonicalizeDirectory, projectFor } from './project-view.ts'
 import { isWithinRoots, listProjectDirectory } from './project-list.ts'
+import { pickLevel, pickRoots } from './pick-browse.ts'
 
 /**
  * One API response: HTTP status plus a JSON body, optionally a raw byte
@@ -323,6 +331,29 @@ export async function dirsApi(
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error)
         throw new DirsStoreError('invalid', `cannot read "${rawPath}": ${message}`)
+      }
+    }
+    if (pathname.split('?')[0] === '/codex-project/api/pick-roots') {
+      if (method !== 'GET') {
+        return json(405, { ok: false, error: 'method-not-allowed' })
+      }
+      return ok({ ok: true, roots: pickRoots() })
+    }
+    if (pathname.split('?')[0] === '/codex-project/api/pick-list') {
+      if (method !== 'GET') {
+        return json(405, { ok: false, error: 'method-not-allowed' })
+      }
+      const query = new URL(pathname, 'http://127.0.0.1').searchParams
+      const rawPath = query.get('path')
+      if (rawPath === null || rawPath === '') {
+        throw new DirsStoreError('invalid', 'path query parameter is required')
+      }
+      try {
+        const level = await pickLevel(rawPath)
+        return ok({ ok: true, path: level.path, parent: level.parent, home: level.home, dirs: level.dirs })
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error)
+        throw new DirsStoreError('invalid', `cannot browse "${rawPath}": ${message}`)
       }
     }
     return json(404, { ok: false, error: 'not-found' })

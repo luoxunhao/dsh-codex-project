@@ -170,6 +170,93 @@ const CSS = `
   cursor: default;
 }
 
+/* --- 管理工作区 dialog: in-page folder picker (选择目录) --- */
+[data-dsh-codex-project-dialog] .dsh-cxp-folder-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 0;
+  flex: 1;
+}
+[data-dsh-codex-project-dialog] .dsh-cxp-folder-picker-path {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  background: var(--dsw-alias-bg-layer-2, rgba(128, 128, 128, 0.08));
+  flex: none;
+  min-width: 0;
+}
+[data-dsh-codex-project-dialog] .dsh-cxp-folder-picker-crumb {
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--dsw-alias-label-primary);
+  min-width: 0;
+}
+[data-dsh-codex-project-dialog] .dsh-cxp-folder-picker-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+}
+[data-dsh-codex-project-dialog] .dsh-cxp-folder-picker-busy {
+  font-size: 11.5px;
+  color: var(--dsw-alias-label-tertiary);
+  opacity: 0.8;
+}
+[data-dsh-codex-project-dialog] .dsh-cxp-folder-picker-list {
+  flex: 1;
+  min-height: 160px;
+  max-height: 280px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--dsw-alias-border-l1);
+  border-radius: 8px;
+}
+[data-dsh-codex-project-dialog] .dsh-cxp-folder-picker-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 30px;
+  padding: 4px 8px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--dsw-alias-label-primary);
+  cursor: pointer;
+  font-size: 13px;
+  text-align: left;
+}
+[data-dsh-codex-project-dialog] .dsh-cxp-folder-picker-row:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+[data-dsh-codex-project-dialog] .dsh-cxp-folder-picker-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+[data-dsh-codex-project-dialog] .dsh-cxp-folder-picker-footer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+  padding-top: 2px;
+}
+[data-dsh-codex-project-dialog] .dsh-cxp-folder-picker-hint {
+  font-size: 11px;
+  color: var(--dsw-alias-label-tertiary);
+  opacity: 0.85;
+  line-height: 1.4;
+}
+
 /* --- 项目文件夹 tab (rendered inside the better-sidebar panel) ---
    Rows mirror better-sidebar's explorer (34px rows, 8px radius, 22px indent,
    hover fill, hover-revealed @-reference button) via the same dsw tokens. */

@@ -137,11 +137,6 @@ export interface ClientInputTriggerService {
   registerSource(source: unknown): () => void
 }
 
-/** The DSH uiWorkspace service (provides pickDirectory). */
-export interface UiWorkspaceService {
-  pickDirectory(): Promise<string | null>
-}
-
 /** The client cordis context for this plugin. */
 export interface Context {
   workspaces: ClientWorkspacesService
@@ -149,8 +144,6 @@ export interface Context {
   betterSidebar?: BetterSidebarService
   /** The input-trigger roster, present only when that plugin is installed. */
   inputTriggers?: ClientInputTriggerService
-  /** The DSH workspace-navigation service (pickDirectory, etc.). */
-  uiWorkspace?: UiWorkspaceService
   /** Register a fiber teardown callback (cordis Context face). */
   effect(callback: () => void | (() => void), name?: string): void
   /** Read a service from the reflect store without inject requirement (cordis Context face). */

@@ -15,7 +15,7 @@
 import { createElement } from 'react'
 import { IconFolderOpenOutline16 } from '@deepseek-ai/dsh-client-ui-primitives'
 
-import type { Context, BetterSidebarService, UiWorkspaceService } from './context.ts'
+import type { Context, BetterSidebarService } from './context.ts'
 import { createSpacesApi } from './api.ts'
 import { createFileReferenceSource } from './file-reference.ts'
 import { mountWorkspaceMenuManageEntry } from './workspace-menu.ts'
@@ -75,7 +75,6 @@ export function apply(ctx: Context): void {
   mount('workspace … menu entry', () => mountWorkspaceMenuManageEntry({
     workspaces: ctx.workspaces,
     api,
-    uiWorkspace: probeService(ctx, 'uiWorkspace') as UiWorkspaceService | undefined,
   }))
   const betterSidebar = probeService(ctx, 'betterSidebar') as BetterSidebarService | undefined
   if (betterSidebar !== undefined) {

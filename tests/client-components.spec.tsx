@@ -1,8 +1,8 @@
 /**
  * dsh-codex-project client tests: the native workspace 「…」 menu injection
  * (打开本地目录 + 管理工作区 items) and the manage dialog it opens —
- * additional-writable-dir list with 添加/移除 for the workspace. Interactive
- * flows (picker, session start) are verified manually against the live GUI.
+ * additional-writable-dir list with an in-page 添加/移除 flow for the
+ * workspace.
  */
 
 // @vitest-environment jsdom
@@ -12,14 +12,15 @@ import { createRoot } from 'react-dom/client'
 import { act } from 'react-dom/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import type { SpacesApi } from '../src/client/api.ts'
-import type { ClientWorkspacesService, ClientWorkspaceView, UiWorkspaceService } from '../src/client/context.ts'
+import type { PickLevel, PickRoot, SpacesApi } from '../src/client/api.ts'
+import type { ClientWorkspacesService, ClientWorkspaceView } from '../src/client/context.ts'
 import { WorkspaceDialog } from '../src/client/workspace-dialog.tsx'
 import { mountWorkspaceMenuManageEntry, MENU_MANAGE_SELECTOR, MENU_OPEN_DIRECTORY_SELECTOR, DIALOG_SELECTOR } from '../src/client/workspace-menu.ts'
 
 const ROOT_A = 'E:\\proj-a'
 const ROOT_B = 'D:\\proj-b'
 const ROOT_C = 'E:\\proj-c'
+const HOME = 'C:\\Users\\me'
 
 /** The registered workspaces the fakes share. */
 const WORKSPACES: ClientWorkspaceView[] = [
@@ -28,8 +29,8 @@ const WORKSPACES: ClientWorkspaceView[] = [
   { workspaceId: 'w3', path: ROOT_C, title: 'proj-c' },
 ]
 
-/** A workspaces fake with a cached list snapshot and observable picker. */
-function fakeWorkspaces(picked: string | null = null):
+/** A workspaces fake with a cached list snapshot. */
+function fakeWorkspaces():
   { service: ClientWorkspacesService; picks: { count: number } } {
   const picks = { count: 0 }
   const snapshot = { items: [...WORKSPACES] }
@@ -42,36 +43,30 @@ function fakeWorkspaces(picked: string | null = null):
   }
 }
 
-/** The core DSH uiWorkspace service face (native directory picker). */
-function fakeUiWorkspace(picked: string | null):
-  { service: UiWorkspaceService; calls: { count: number } } {
-  const calls = { count: 0 }
-  return {
-    service: {
-      pickDirectory: async () => {
-        calls.count += 1
-        return picked
-      },
-    },
-    calls,
-  }
-}
-
-/** A spaces API fake around per-workspace dir lists. */
-function fakeApi(dirsByWorkspace: Record<string, string[]> = {}, picked: string | null = null):
+/** A spaces API fake around per-workspace dir lists plus an in-page picker feed. */
+function fakeApi(
+  dirsByWorkspace: Record<string, string[]> = {},
+  fs: Record<string, string[]> = {},
+):
   {
     api: SpacesApi
     dirsByWorkspace: Record<string, string[]>
     calls: Array<{ op: string; workspaceId?: string; dirs?: string[] }>
     openedDirs: string[]
+    listed: string[]
   } {
   const dirsByWorkspaceCopy = { ...dirsByWorkspace }
   const calls: Array<{ op: string; workspaceId?: string; dirs?: string[] }> = []
   const openedDirs: string[] = []
+  const listed: string[] = []
+  // pickList mirrors the host: subdir names under `path` become absolute children.
+  const children = (path: string): PickRoot[] =>
+    (fs[path] ?? []).map(name => ({ name, path: `${path}\\${name}` }))
   return {
     dirsByWorkspace: dirsByWorkspaceCopy,
     calls,
     openedDirs,
+    listed,
     api: {
       list: async () => Object.fromEntries(
         Object.entries(dirsByWorkspaceCopy).map(([id, dirs]) => [id, { path: id === 'w1' ? ROOT_A : ROOT_B, dirs }]),
@@ -83,7 +78,16 @@ function fakeApi(dirsByWorkspace: Record<string, string[]> = {}, picked: string 
         return [...dirs]
       },
       openDirectory: async (path) => { openedDirs.push(path) },
-      pickDirectory: async () => picked,
+      pickRoots: async (): Promise<PickRoot[]> => [
+        { name: 'E:\\', path: 'E:\\' },
+        { name: 'D:\\', path: 'D:\\' },
+        { name: `~ (${HOME})`, path: HOME },
+      ],
+      pickList: async (path): Promise<PickLevel> => {
+        listed.push(path)
+        const parent = /^[A-Za-z]:\\$/.test(path) ? null : HOME
+        return { path, parent, home: HOME, dirs: children(path) }
+      },
       project: async () => null,
       listDir: async () => ({ path: '', entries: [], truncated: false }),
       readFile: async () => ({ content: '', truncated: false }),
@@ -311,10 +315,8 @@ describe('WorkspaceDialog', () => {
     container.remove()
   })
 
-  it('adds an additional dir through the native uiWorkspace picker', async () => {
-    const picked = 'E:\\picked'
-    const fake = fakeApi({ w1: [] })
-    const native = fakeUiWorkspace(picked)
+  it('adds the current (workspace) dir through the in-page picker', async () => {
+    const fake = fakeApi({ w1: [] }, { [ROOT_A]: ['shared'] })
     const container = document.createElement('div')
     document.body.appendChild(container)
     const root = createRoot(container)
@@ -322,8 +324,7 @@ describe('WorkspaceDialog', () => {
       root.render(createElement(WorkspaceDialog, {
         workspace: workspace(),
         api: fake.api,
-        workspaces: fakeWorkspaces(picked).service,
-        uiWorkspace: native.service,
+        workspaces: fakeWorkspaces().service,
         onClose: () => {},
       }))
     })
@@ -331,17 +332,20 @@ describe('WorkspaceDialog', () => {
     expect(container.textContent).toContain('还没有附加可写目录')
     clickButton(container, '添加附加目录')
     await act(async () => {})
-    // The native picker ran; the plugin's own HTTP pick route is bypassed.
-    expect(native.calls.count).toBe(1)
-    expect(fake.dirsByWorkspace.w1).toEqual([picked])
-    expect(fake.calls).toEqual([{ op: 'setDirs', workspaceId: 'w1', dirs: [picked] }])
+    // The in-page picker opened (no OS dialog), listing ROOT_A's subdirs.
+    expect(container.textContent).toContain('选择当前目录')
+    expect(container.textContent).toContain('shared')
+    expect(fake.listed).toContain(ROOT_A)
+    clickButton(container, '选择当前目录')
+    await act(async () => {})
+    expect(fake.dirsByWorkspace.w1).toEqual([ROOT_A])
+    expect(fake.calls).toEqual([{ op: 'setDirs', workspaceId: 'w1', dirs: [ROOT_A] }])
     root.unmount()
     container.remove()
   })
 
-  it('falls back to the plugin pick route when uiWorkspace is absent', async () => {
-    const picked = 'E:\\picked'
-    const fake = fakeApi({ w1: [] }, picked)
+  it('descends into a subdirectory and adds that folder', async () => {
+    const fake = fakeApi({ w1: [] }, { [ROOT_A]: ['shared'], [`${ROOT_A}\\shared`]: [] })
     const container = document.createElement('div')
     document.body.appendChild(container)
     const root = createRoot(container)
@@ -349,22 +353,27 @@ describe('WorkspaceDialog', () => {
       root.render(createElement(WorkspaceDialog, {
         workspace: workspace(),
         api: fake.api,
-        workspaces: fakeWorkspaces(picked).service,
+        workspaces: fakeWorkspaces().service,
         onClose: () => {},
       }))
     })
     await act(async () => {})
     clickButton(container, '添加附加目录')
     await act(async () => {})
-    expect(fake.dirsByWorkspace.w1).toEqual([picked])
-    expect(fake.calls).toEqual([{ op: 'setDirs', workspaceId: 'w1', dirs: [picked] }])
+    const target = `${ROOT_A}\\shared`
+    clickButton(container, 'shared')
+    await act(async () => {})
+    expect(container.textContent).toContain(target)
+    clickButton(container, '选择当前目录')
+    await act(async () => {})
+    expect(fake.dirsByWorkspace.w1).toEqual([target])
+    expect(fake.calls).toEqual([{ op: 'setDirs', workspaceId: 'w1', dirs: [target] }])
     root.unmount()
     container.remove()
   })
 
-  it('does not add when the native picker is cancelled', async () => {
-    const fake = fakeApi({ w1: [] })
-    const native = fakeUiWorkspace(null)
+  it('does not add when the picker is cancelled', async () => {
+    const fake = fakeApi({ w1: [] }, { [ROOT_A]: ['shared'] })
     const container = document.createElement('div')
     document.body.appendChild(container)
     const root = createRoot(container)
@@ -372,15 +381,15 @@ describe('WorkspaceDialog', () => {
       root.render(createElement(WorkspaceDialog, {
         workspace: workspace(),
         api: fake.api,
-        workspaces: fakeWorkspaces(null).service,
-        uiWorkspace: native.service,
+        workspaces: fakeWorkspaces().service,
         onClose: () => {},
       }))
     })
     await act(async () => {})
     clickButton(container, '添加附加目录')
     await act(async () => {})
-    expect(native.calls.count).toBe(1)
+    clickButton(container, '取消')
+    await act(async () => {})
     expect(fake.calls).toHaveLength(0)
     expect(fake.dirsByWorkspace.w1).toEqual([])
     root.unmount()
@@ -388,7 +397,7 @@ describe('WorkspaceDialog', () => {
   })
 
   it('ignores adding a directory already in the list', async () => {
-    const fake = fakeApi({ w1: [ROOT_B] })
+    const fake = fakeApi({ w1: [ROOT_A] }, { [ROOT_A]: [] })
     const container = document.createElement('div')
     document.body.appendChild(container)
     const root = createRoot(container)
@@ -396,16 +405,17 @@ describe('WorkspaceDialog', () => {
       root.render(createElement(WorkspaceDialog, {
         workspace: workspace(),
         api: fake.api,
-        workspaces: fakeWorkspaces(ROOT_B).service,
-        uiWorkspace: fakeUiWorkspace(ROOT_B).service,
+        workspaces: fakeWorkspaces().service,
         onClose: () => {},
       }))
     })
     await act(async () => {})
     clickButton(container, '添加附加目录')
     await act(async () => {})
+    clickButton(container, '选择当前目录')
+    await act(async () => {})
     expect(fake.calls).toHaveLength(0)
-    expect(fake.dirsByWorkspace.w1).toEqual([ROOT_B])
+    expect(fake.dirsByWorkspace.w1).toEqual([ROOT_A])
     root.unmount()
     container.remove()
   })
