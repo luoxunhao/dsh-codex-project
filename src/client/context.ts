@@ -38,23 +38,44 @@ export interface ClientWorkspacesService {
 /**
  * The better-sidebar service face the project tab consumes — restated
  * structurally like the workspaces slice (upstream augmentations do not reach
- * this bundle). Only `registerTab` is used; the descriptor shape matches the
- * documented TabDescriptor subset better-sidebar expects, so the runtime call
- * stays type-compatible. `ctx.betterSidebar` is OPTIONAL: the tab registers
- * only when better-sidebar is installed.
+ * this bundle). `registerTab` registers a sidebar page; `openTab` opens a tab
+ * of a registered type with an optional file path (used to open the 项目文件夹
+ * file preview in its own sidebar tab). `ctx.betterSidebar` is OPTIONAL: these
+ * register only when better-sidebar is installed.
  */
+export interface OpenTabSeed {
+  /** The registered tab type id (e.g. 'codex-project:project'). */
+  type: string
+  /** Overrides the descriptor's title (the preview tab shows the file name). */
+  title?: string
+  /** A file path (the preview tab's content seed). */
+  path?: string
+  /** Explicit tab id (defaults to the type; use a path-derived id to dedupe). */
+  id?: string
+  /** JSON-serializable custom state carried on the minted tab. */
+  meta?: unknown
+}
+
 export interface SidebarTabDescriptor {
   id: string
   title: string | (() => string)
   icon?: unknown
   order?: number
+  /** `single: true` dedupes opens of the same type (focus instead of re-open). */
   single?: boolean
+  /** Hide from the sidebar + menu (the preview tab is only opened programmatically). */
+  hidden?: boolean
   component: (props: SidebarTabComponentProps) => unknown
 }
 
 /** The better-sidebar client service face (subset actually consumed). */
 export interface BetterSidebarService {
   registerTab(descriptor: SidebarTabDescriptor): () => void
+  /**
+   * Open a tab of a registered type. A content seed (path) opens a preview/editor
+   * tab for that file; a type-only seed opens a blank page of the type.
+   */
+  openTab(seed: OpenTabSeed, scope?: SidebarTabScope): void
 }
 
 /** One session scope: the session id plus its working directory. */
@@ -66,11 +87,15 @@ export interface SidebarTabScope {
 /**
  * The props better-sidebar passes to a registered tab's `component`. Only the
  * slices the tab touches are restated: the client `ctx` (for the composer
- * draft) and the session `scope`.
+ * draft), the session `scope`, and the minted `tab` (whose `path`/`meta` seed
+ * the preview tab — better-sidebar always passes these at runtime regardless
+ * of what this structural face declares).
  */
 export interface SidebarTabComponentProps {
   ctx: ClientRuntimeContext
   scope: SidebarTabScope
+  /** The current tab instance (its `path` seeds the file preview tab). */
+  tab?: { path?: string; title?: string; meta?: unknown }
 }
 
 /** One session row of the client session projection (subset actually consumed). */
@@ -137,11 +162,6 @@ export interface ClientInputTriggerService {
   registerSource(source: unknown): () => void
 }
 
-/** The DSH uiWorkspace service (provides pickDirectory). */
-export interface UiWorkspaceService {
-  pickDirectory(): Promise<string | null>
-}
-
 /** The client cordis context for this plugin. */
 export interface Context {
   workspaces: ClientWorkspacesService
@@ -149,8 +169,6 @@ export interface Context {
   betterSidebar?: BetterSidebarService
   /** The input-trigger roster, present only when that plugin is installed. */
   inputTriggers?: ClientInputTriggerService
-  /** The DSH workspace-navigation service (pickDirectory, etc.). */
-  uiWorkspace?: UiWorkspaceService
   /** Register a fiber teardown callback (cordis Context face). */
   effect(callback: () => void | (() => void), name?: string): void
   /** Read a service from the reflect store without inject requirement (cordis Context face). */

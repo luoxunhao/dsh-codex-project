@@ -170,6 +170,115 @@ const CSS = `
   cursor: default;
 }
 
+/* --- 管理工作区 dialog: in-page folder picker (选择目录) --- */
+[data-dsh-codex-project-dialog] .dsh-cxp-folder-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 0;
+  flex: 1;
+}
+[data-dsh-codex-project-dialog] .dsh-cxp-folder-picker-path {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  background: var(--dsw-alias-bg-layer-2, rgba(128, 128, 128, 0.08));
+  flex: none;
+  min-width: 0;
+}
+[data-dsh-codex-project-dialog] .dsh-cxp-folder-picker-crumb {
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--dsw-alias-label-primary);
+  min-width: 0;
+}
+[data-dsh-codex-project-dialog] .dsh-cxp-folder-picker-jump {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+}
+[data-dsh-codex-project-dialog] .dsh-cxp-folder-picker-input {
+  flex: 1;
+  min-width: 0;
+  height: 26px;
+  padding: 0 8px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: var(--dsw-alias-bg-layer-2, rgba(128, 128, 128, 0.08));
+  color: var(--dsw-alias-label-primary);
+  font-size: 12px;
+  font-family: var(--dsw-font-family-mono, ui-monospace, SFMono-Regular, Consolas, monospace);
+  outline: none;
+}
+[data-dsh-codex-project-dialog] .dsh-cxp-folder-picker-input:focus {
+  border-color: var(--dsw-alias-focus-ring, #4d8df0);
+}
+[data-dsh-codex-project-dialog] .dsh-cxp-folder-picker-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+}
+[data-dsh-codex-project-dialog] .dsh-cxp-folder-picker-busy {
+  font-size: 11.5px;
+  color: var(--dsw-alias-label-tertiary);
+  opacity: 0.8;
+}
+[data-dsh-codex-project-dialog] .dsh-cxp-folder-picker-list {
+  flex: 1;
+  min-height: 160px;
+  max-height: 280px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--dsw-alias-border-l1);
+  border-radius: 8px;
+}
+[data-dsh-codex-project-dialog] .dsh-cxp-folder-picker-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 30px;
+  padding: 4px 8px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--dsw-alias-label-primary);
+  cursor: pointer;
+  font-size: 13px;
+  text-align: left;
+}
+[data-dsh-codex-project-dialog] .dsh-cxp-folder-picker-row:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+[data-dsh-codex-project-dialog] .dsh-cxp-folder-picker-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+[data-dsh-codex-project-dialog] .dsh-cxp-folder-picker-footer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+  padding-top: 2px;
+}
+[data-dsh-codex-project-dialog] .dsh-cxp-folder-picker-hint {
+  font-size: 11px;
+  color: var(--dsw-alias-label-tertiary);
+  opacity: 0.85;
+  line-height: 1.4;
+}
+
 /* --- 项目文件夹 tab (rendered inside the better-sidebar panel) ---
    Rows mirror better-sidebar's explorer (34px rows, 8px radius, 22px indent,
    hover fill, hover-revealed @-reference button) via the same dsw tokens. */
@@ -188,6 +297,107 @@ const CSS = `
   height: 36px;
   padding: 0 8px 0 12px;
   flex: none;
+}
+[data-dsh-codex-project-tab] .dsh-cxp-files-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 36px;
+  padding: 0 8px;
+  flex: none;
+  border-bottom: 1px solid var(--dsw-alias-border-l1);
+}
+[data-dsh-codex-project-tab] .dsh-cxp-files-search {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  padding: 0 8px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: var(--dsw-alias-bg-layer-2, rgba(128, 128, 128, 0.08));
+  color: var(--dsw-alias-label-tertiary);
+}
+[data-dsh-codex-project-tab] .dsh-cxp-files-search:focus-within {
+  border-color: var(--dsw-alias-focus-ring, #4d8df0);
+}
+[data-dsh-codex-project-tab] .dsh-cxp-files-search-input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  color: var(--dsw-alias-label-primary);
+  font-size: 12px;
+  outline: none;
+}
+[data-dsh-codex-project-tab] .dsh-cxp-files-search-spin {
+  font-size: 12px;
+  color: var(--dsw-alias-label-tertiary);
+}
+[data-dsh-codex-project-tab] .dsh-cxp-files-search-results {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+[data-dsh-codex-project-tab] .dsh-cxp-files-search-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 30px;
+  padding: 4px 8px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--dsw-alias-label-primary);
+  cursor: pointer;
+  font-size: 12.5px;
+  text-align: left;
+}
+[data-dsh-codex-project-tab] .dsh-cxp-files-search-row:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+[data-dsh-codex-project-tab] .dsh-cxp-files-search-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+[data-dsh-codex-project-tab] .dsh-cxp-files-status {
+  flex: none;
+  font-size: 11.5px;
+  color: var(--dsw-alias-label-secondary);
+  opacity: 0.9;
+  padding: 3px 12px;
+  border-bottom: 1px solid var(--dsw-alias-border-l1);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+[data-dsh-codex-project-tab] .dsh-cxp-files-status-fail {
+  color: #e06c6c;
+}
+/* Refresh feedback: the toolbar icon spins and the tree blinks once, so a
+   refresh click is visibly acknowledged (mirrors better-sidebar's row-fade). */
+[data-dsh-codex-project-tab] .dsh-cxp-refresh-spinning svg {
+  animation: dsh-cxp-refresh-spin 0.5s linear infinite;
+}
+@keyframes dsh-cxp-refresh-spin {
+  to { transform: rotate(360deg); }
+}
+[data-dsh-codex-project-tab] .dsh-cxp-tree-flash {
+  animation: dsh-cxp-tree-blink 0.5s ease-out;
+}
+@keyframes dsh-cxp-tree-blink {
+  0% { opacity: 0.35; }
+  60% { opacity: 0.35; }
+  100% { opacity: 1; }
 }
 [data-dsh-codex-project-tab] .dsh-cxp-tab-title {
   font-size: var(--dsw-font-s-14, 14px);
