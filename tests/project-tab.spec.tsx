@@ -327,13 +327,40 @@ describe('ProjectTab', () => {
     expect(runtime.chips).toEqual([{ ref: `${ROOT_A}\\readme.md`, label: 'readme.md' }])
   })
 
-  it('opens the context menu on right-click (用文件管理器打开 item present)', async () => {
+  it('directory context menu: 用文件管理器打开 + 上传到此处, no 下载/添加到对话', async () => {
     const fake = fakeApi(PROJECT)
     const { tab } = await renderTab(fake.api, fakeCtx().ctx)
     await act(async () => {
       rowByText(tab, 'proj (主)').dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }))
     })
-    expect(tab.ownerDocument.body.textContent).toContain('用文件管理器打开')
+    const text = tab.ownerDocument.body.textContent ?? ''
+    expect(text).toContain('用文件管理器打开')
+    expect(text).toContain('上传到此处')
+    expect(text).not.toContain('下载')
+    expect(text).not.toContain('添加到对话')
+  })
+
+  it('file context menu: 下载 present, no 上传到此处/添加到对话', async () => {
+    const listing: ProjectListing = {
+      path: ROOT_A,
+      entries: [
+        { name: 'readme.md', path: `${ROOT_A}\\readme.md`, isDir: false, hidden: false, isSymlink: false, broken: false },
+      ],
+      truncated: false,
+    }
+    const fake = fakeApi(PROJECT, { [ROOT_A]: listing })
+    const { tab } = await renderTab(fake.api, fakeCtx().ctx)
+    await act(async () => {
+      rowByText(tab, 'proj (主)').click()
+    })
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)) })
+    await act(async () => {
+      rowByText(tab, 'readme.md').dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }))
+    })
+    const text = tab.ownerDocument.body.textContent ?? ''
+    expect(text).toContain('下载')
+    expect(text).not.toContain('上传到此处')
+    expect(text).not.toContain('添加到对话')
   })
 
   it('surfaces a project-fetch error instead of crashing', async () => {

@@ -21,21 +21,21 @@
  * mirror better-sidebar's explorer metrics via the shared `--dsw-*` tokens.
  *
  * Row interactions: expand/collapse a directory; open a file in the preview
- * tab; right-click a row for a context menu (open the folder locally, copy the
- * relative / absolute path, or reference the file in chat as a chip); hover a
- * row to reveal the @-reference button.
+ * tab; right-click a row for a context menu — a file offers 下载, a directory
+ * offers 用文件管理器打开 / 上传到此处 (upload files into that folder), and every
+ * row can copy its relative / absolute path; hovering a row reveals the
+ * @-reference button.
  * @module dsh-codex-project/client/project-tab
  */
 
 import { useCallback, useEffect, useRef, useState, type MouseEvent, type ReactNode } from 'react'
 import {
-  IconCodeOutline16,
   IconCopyOutline16,
+  IconDownloadOutline16,
   IconFolderClose16,
   IconFolderOpen16,
   IconFolderOpenOutline16,
   IconLinkOutline16,
-  IconPaperclipOutline16,
   IconRefreshOutline16,
   IconSearchOutline16,
   IconWarningOutline16,
@@ -112,6 +112,9 @@ export function ProjectTab(props: ProjectTabProps): ReactNode {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const folderInputRef = useRef<HTMLInputElement>(null)
   const searchTimer = useRef<number | undefined>(undefined)
+  /** The directory the next file/folder picker upload targets (main root by
+   *  default; the folder context menu's "上传到此处" sets it to that folder). */
+  const uploadTargetDir = useRef<string | null>(null)
 
   // Debounced project file-name search while the query is non-empty.
   const needle = query.trim()
@@ -149,9 +152,15 @@ export function ProjectTab(props: ProjectTabProps): ReactNode {
     reader.readAsDataURL(file)
   })
 
-  const startUpload = async (files: FileList | null): Promise<void> => {
-    if (files === null || files.length === 0 || cwd === undefined) return
-    const dir = project !== null && project !== undefined ? project.path : cwd
+  /** Default upload target: the project's main root, else the session cwd. */
+  const defaultUploadDir = (): string | null => {
+    if (cwd === undefined || cwd === '') return null
+    return project !== null && project !== undefined ? project.path : cwd
+  }
+
+  /** Upload picked files into `dir` (an absolute directory within the project). */
+  const startUpload = async (files: FileList | null, dir: string | null): Promise<void> => {
+    if (files === null || files.length === 0 || dir === null || cwd === undefined) return
     setUploading(true)
     setUploadStatus(null)
     try {
@@ -164,7 +173,25 @@ export function ProjectTab(props: ProjectTabProps): ReactNode {
       setUploadStatus({ text: reason instanceof Error ? reason.message : String(reason), failed: true })
     } finally {
       setUploading(false)
+      uploadTargetDir.current = null
     }
+  }
+
+  /** Open the file picker and upload the chosen files into `dir`. */
+  const openUploadPicker = (dir: string): void => {
+    uploadTargetDir.current = dir
+    fileInputRef.current?.click()
+  }
+
+  /** Download a file through the host route (raw bytes, binary-safe). */
+  const downloadFile = (path: string): void => {
+    if (cwd === undefined) return
+    const anchor = document.createElement('a')
+    anchor.href = api.downloadUrl(cwd, path)
+    anchor.style.display = 'none'
+    document.body.appendChild(anchor)
+    anchor.click()
+    anchor.remove()
   }
 
   /** Refresh the tree with a visible blink: spin the refresh icon and flash the
@@ -239,14 +266,33 @@ export function ProjectTab(props: ProjectTabProps): ReactNode {
       <button type="button" className={`dsh-cxp-tab-icon-btn${refreshing ? ' dsh-cxp-refresh-spinning' : ''}`} title="刷新" disabled={uploading} onClick={doRefresh}>
         <IconRefreshOutline16 size={15} />
       </button>
-      <button type="button" className="dsh-cxp-tab-icon-btn" title="上传文件" disabled={uploading || cwd === undefined} onClick={() => { fileInputRef.current?.click() }}>
-        <IconPaperclipOutline16 size={15} />
+      <button type="button" className="dsh-cxp-tab-icon-btn" title="上传文件" disabled={uploading || defaultUploadDir() === null} onClick={() => { const d = defaultUploadDir(); if (d !== null) openUploadPicker(d) }}>
+        <UploadArrowIcon size={15} />
       </button>
-      <button type="button" className="dsh-cxp-tab-icon-btn" title="上传文件夹" disabled={uploading || cwd === undefined} onClick={() => { folderInputRef.current?.click() }}>
+      <button type="button" className="dsh-cxp-tab-icon-btn" title="上传文件夹" disabled={uploading || defaultUploadDir() === null} onClick={() => { const d = defaultUploadDir(); if (d !== null) { uploadTargetDir.current = d; folderInputRef.current?.click() } }}>
         <IconFolderOpen16 size={15} />
       </button>
-      <input ref={fileInputRef} type="file" multiple style={{ display: 'none' }} onChange={(e) => { void startUpload(e.target.files); e.target.value = '' }} />
-      <input ref={folderInputRef} type="file" multiple {...{ webkitdirectory: '' } as object} style={{ display: 'none' }} onChange={(e) => { void startUpload(e.target.files); e.target.value = '' }} />
+      <input
+        ref={fileInputRef}
+        type="file"
+        multiple
+        style={{ display: 'none' }}
+        onChange={(e) => {
+          void startUpload(e.target.files, uploadTargetDir.current ?? defaultUploadDir())
+          e.target.value = ''
+        }}
+      />
+      <input
+        ref={folderInputRef}
+        type="file"
+        multiple
+        {...{ webkitdirectory: '' } as object}
+        style={{ display: 'none' }}
+        onChange={(e) => {
+          void startUpload(e.target.files, uploadTargetDir.current ?? defaultUploadDir())
+          e.target.value = ''
+        }}
+      />
     </div>
   )
 
@@ -333,17 +379,27 @@ export function ProjectTab(props: ProjectTabProps): ReactNode {
         open={rowMenu !== null}
         onClose={() => { setRowMenu(null) }}
         items={[
-          { id: 'open-dir', label: '用文件管理器打开', icon: <IconFolderOpenOutline16 size={14} /> },
+          // Files: download; directories: upload into this folder (better-sidebar
+          // semantics). Both always offer copy + the folder opener for dirs.
+          ...(rowMenu !== null && !rowMenu.isFile
+            ? [{ id: 'upload-here', label: '上传到此处', icon: <UploadArrowIcon size={14} /> }]
+            : []),
+          ...(rowMenu !== null && rowMenu.isFile
+            ? [{ id: 'download', label: '下载', icon: <IconDownloadOutline16 size={14} /> }]
+            : []),
+          ...(rowMenu !== null && !rowMenu.isFile
+            ? [{ id: 'open-dir', label: '用文件管理器打开', icon: <IconFolderOpenOutline16 size={14} /> }]
+            : []),
           { id: 'relative', label: '复制相对路径', icon: <IconCopyOutline16 size={14} /> },
           { id: 'absolute', label: '复制绝对路径', icon: <IconCopyOutline16 size={14} /> },
-          { id: 'reference', label: '添加到对话（@引用）', icon: <IconCodeOutline16 size={14} /> },
         ]}
         onSelect={(id) => {
           const target = rowMenu
           if (target === null) return
           setRowMenu(null)
           if (id === 'open-dir') { openDir(target.path); return }
-          if (id === 'reference') { reference(target.path, !target.isFile); return }
+          if (id === 'download') { downloadFile(target.path); return }
+          if (id === 'upload-here') { openUploadPicker(target.path); return }
           copyPath(
             id === 'relative' ? relativePath(cwd ?? '', target.path) : target.path,
             target.path,
@@ -473,6 +529,18 @@ function DirNode(props: {
         </div>
       )}
     </div>
+  )
+}
+
+/** An upload arrow-into-tray glyph (mirrors dsh-better-sidebar's IconUploadOutline16,
+ *  which the shared primitives do not provide). Used for the 上传文件 action and
+ *  the folder context menu's 上传到此处. */
+function UploadArrowIcon({ size = 16, className }: { size?: number; className?: string }): ReactNode {
+  return (
+    <svg width={size} height={size} className={className} viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      <path d="M8 10V2.75M4.75 5.5 8 2.25 11.25 5.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M2.75 10.5v2.25A1.25 1.25 0 0 0 4 14h8a1.25 1.25 0 0 0 1.25-1.25V10.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+    </svg>
   )
 }
 
