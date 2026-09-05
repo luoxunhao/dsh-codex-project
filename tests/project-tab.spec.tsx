@@ -187,6 +187,36 @@ describe('ProjectTab', () => {
     expect(tab.textContent).toContain('readme.md')
   })
 
+  it('the refresh toolbar button reloads an already-expanded directory', async () => {
+    const listing: ProjectListing = {
+      path: ROOT_A,
+      entries: [
+        { name: 'readme.md', path: `${ROOT_A}\\readme.md`, isDir: false, hidden: false, isSymlink: false, broken: false },
+      ],
+      truncated: false,
+    }
+    const fake = fakeApi(PROJECT, { [ROOT_A]: listing })
+    const { tab } = await renderTab(fake.api, fakeCtx().ctx)
+    // Expand the main root → one listDir call.
+    await act(async () => {
+      rowByText(tab, 'proj (主)').click()
+    })
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)) })
+    expect(fake.listed).toEqual([{ cwd: ROOT_A, path: ROOT_A }])
+    // Click the refresh button in the toolbar → the still-open level is re-fetched.
+    const refreshBtn = Array.from(tab.querySelectorAll<HTMLButtonElement>('.dsh-cxp-files-toolbar button'))
+      .find(b => b.title === '刷新')!
+    await act(async () => {
+      refreshBtn.click()
+    })
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)) })
+    expect(fake.listed).toEqual([
+      { cwd: ROOT_A, path: ROOT_A },
+      { cwd: ROOT_A, path: ROOT_A },
+    ])
+    expect(tab.textContent).toContain('readme.md')
+  })
+
   it('opens a file into its own preview tab on click (no inline preview)', async () => {
     const listing: ProjectListing = {
       path: ROOT_A,

@@ -292,6 +292,7 @@ export function ProjectTab(props: ProjectTabProps): ReactNode {
               name={name}
               depth={0}
               defaultOpen={false}
+              refreshTick={reloadKey}
               onOpenFile={openPreview}
               onOpenDir={openDir}
               rowAction={rowAction}
@@ -362,25 +363,30 @@ function DirNode(props: {
   name: string
   depth: number
   defaultOpen: boolean
+  refreshTick: number
   onOpenFile: (path: string) => void
   onOpenDir: (path: string) => void
   rowAction: (path: string, isDirectory?: boolean) => ReactNode
   openRowMenu: (event: MouseEvent, path: string, isFile: boolean) => void
 }): ReactNode {
   const {
-    api, cwd, path, name, depth, defaultOpen, onOpenFile, onOpenDir,
+    api, cwd, path, name, depth, defaultOpen, refreshTick, onOpenFile, onOpenDir,
     rowAction, openRowMenu,
   } = props
   const [expanded, setExpanded] = useState(defaultOpen)
   const [listing, setListing] = useState<ProjectListing | null>(null)
   const [loading, setLoading] = useState(false)
   const [loadError, setLoadError] = useState<string | null>(null)
+  // The refreshTick whose data is currently (or last) fetched for this level.
+  // Guarded so a loaded level is not refetched on every render or re-expand, but
+  // a `refreshTick` bump (the toolbar refresh) reloads every open level so the
+  // visible tree reflects on-disk changes.
+  const lastFetchedTick = useRef<number | null>(null)
 
-  // Deliberately keyed only on expand/cwd/path: adding `loading`/`listing`
-  // would re-run this effect on the very state updates it makes, whose
-  // cleanup would cancel the in-flight request before it resolves.
   useEffect(() => {
-    if (!expanded || listing !== null || loading) return
+    if (!expanded) return
+    if (lastFetchedTick.current === refreshTick) return
+    lastFetchedTick.current = refreshTick
     let cancelled = false
     setLoading(true)
     setLoadError(null)
@@ -394,7 +400,7 @@ function DirNode(props: {
       setLoading(false)
     })
     return () => { cancelled = true }
-  }, [expanded, api, cwd, path])
+  }, [expanded, refreshTick, api, cwd, path])
 
   return (
     <div>
@@ -432,6 +438,7 @@ function DirNode(props: {
                   name={entry.name}
                   depth={depth + 1}
                   defaultOpen={false}
+                  refreshTick={refreshTick}
                   onOpenFile={onOpenFile}
                   onOpenDir={onOpenDir}
                   rowAction={rowAction}
