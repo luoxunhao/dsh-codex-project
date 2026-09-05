@@ -383,6 +383,22 @@ const CSS = `
 [data-dsh-codex-project-tab] .dsh-cxp-files-status-fail {
   color: #e06c6c;
 }
+/* Refresh feedback: the toolbar icon spins and the tree blinks once, so a
+   refresh click is visibly acknowledged (mirrors better-sidebar's row-fade). */
+[data-dsh-codex-project-tab] .dsh-cxp-refresh-spinning svg {
+  animation: dsh-cxp-refresh-spin 0.5s linear infinite;
+}
+@keyframes dsh-cxp-refresh-spin {
+  to { transform: rotate(360deg); }
+}
+[data-dsh-codex-project-tab] .dsh-cxp-tree-flash {
+  animation: dsh-cxp-tree-blink 0.5s ease-out;
+}
+@keyframes dsh-cxp-tree-blink {
+  0% { opacity: 0.35; }
+  60% { opacity: 0.35; }
+  100% { opacity: 1; }
+}
 [data-dsh-codex-project-tab] .dsh-cxp-tab-title {
   font-size: var(--dsw-font-s-14, 14px);
   font-weight: 600;

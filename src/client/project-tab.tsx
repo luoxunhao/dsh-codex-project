@@ -77,6 +77,9 @@ export function ProjectTab(props: ProjectTabProps): ReactNode {
   const [project, setProject] = useState<ProjectView | null | undefined>(undefined)
   const [error, setError] = useState<string | null>(null)
   const [reloadKey, setReloadKey] = useState(0)
+  /** True while a refresh "blink" is animating (button spin + tree flash). */
+  const [refreshing, setRefreshing] = useState(false)
+  const refreshTimer = useRef<number | undefined>(undefined)
   /** The row whose path was just copied ("已复制" replaces its @ button). */
   const [copiedPath, setCopiedPath] = useState<string | null>(null)
   /** The open context menu: the target row path plus the cursor position. */
@@ -97,6 +100,8 @@ export function ProjectTab(props: ProjectTabProps): ReactNode {
   }, [api, cwd])
 
   useEffect(() => { void refresh() }, [refresh, reloadKey])
+  // Clear a pending refresh-blink timer on unmount.
+  useEffect(() => () => { window.clearTimeout(refreshTimer.current) }, [])
 
   // --- Files-style toolbar state: search + upload ---
   const [query, setQuery] = useState('')
@@ -162,6 +167,15 @@ export function ProjectTab(props: ProjectTabProps): ReactNode {
     }
   }
 
+  /** Refresh the tree with a visible blink: spin the refresh icon and flash the
+   *  tree body briefly, while reloading every open level (reloadKey bump). */
+  const doRefresh = (): void => {
+    window.clearTimeout(refreshTimer.current)
+    setRefreshing(true)
+    setReloadKey(key => key + 1)
+    refreshTimer.current = window.setTimeout(() => { setRefreshing(false) }, 500)
+  }
+
   const openDir = useCallback((path: string) => {
     void api.openDirectory(path).catch((reason) => {
       console.error('[dsh-codex-project] open directory failed:', reason)
@@ -222,7 +236,7 @@ export function ProjectTab(props: ProjectTabProps): ReactNode {
         />
         {searching && <span className="dsh-cxp-files-search-spin">…</span>}
       </div>
-      <button type="button" className="dsh-cxp-tab-icon-btn" title="刷新" disabled={uploading} onClick={() => { setReloadKey(key => key + 1) }}>
+      <button type="button" className={`dsh-cxp-tab-icon-btn${refreshing ? ' dsh-cxp-refresh-spinning' : ''}`} title="刷新" disabled={uploading} onClick={doRefresh}>
         <IconRefreshOutline16 size={15} />
       </button>
       <button type="button" className="dsh-cxp-tab-icon-btn" title="上传文件" disabled={uploading || cwd === undefined} onClick={() => { fileInputRef.current?.click() }}>
@@ -275,7 +289,7 @@ export function ProjectTab(props: ProjectTabProps): ReactNode {
         ...project.missingDirs.map(path => ({ path, kind: 'missing' as const })),
       ]
     body = (
-      <div className="dsh-cxp-tab-tree">
+      <div className={`dsh-cxp-tab-tree${refreshing ? ' dsh-cxp-tree-flash' : ''}`}>
         {roots.length === 0 ? (
           <div className="dsh-cxp-tab-note">等待工作区…</div>
         ) : roots.map(root => {
