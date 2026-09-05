@@ -1,8 +1,10 @@
 /**
- * 项目文件夹 tab tests: project resolution drives the empty state, the root
- * rows (main + shared + missing), lazy per-directory listing on expand, file
- * preview inline on click, inline editor host mounting, and right-click
- * "用文件管理器打开".
+ * 项目文件夹 tab + 文件预览 tab tests. Project resolution drives the tree's
+ * empty/single-root state, root rows (main + shared + missing), lazy per-dir
+ * listing on expand, opening a file into its own preview tab (openPreview), the
+ * @-reference button, the right-click "用文件管理器打开", and error surfacing.
+ * A separate block covers the FilePreviewTab, which renders the preview for the
+ * tab's `path` through the plugin's own /codex-project API.
  */
 
 // @vitest-environment jsdom
@@ -10,11 +12,12 @@
 import { createElement } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { act } from 'react-dom/test-utils'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import type { ProjectEntry, ProjectListing, ProjectView, SpacesApi } from '../src/client/api.ts'
-import type { ClientRuntimeContext } from '../src/client/context.ts'
+import type { ClientRuntimeContext, SidebarTabComponentProps } from '../src/client/context.ts'
 import { ProjectTab } from '../src/client/project-tab.tsx'
+import { FilePreviewTab } from '../src/client/preview-tab.tsx'
 
 const ROOT_A = 'E:\\proj'
 const ROOT_B = 'D:\\shared'
@@ -97,22 +100,28 @@ function fakeCtx(): { ctx: ClientRuntimeContext; chips: Array<{ ref: string; lab
   return { ctx, chips }
 }
 
-/** Render the tab and return the mounted `[data-dsh-codex-project-tab]` node.
- *  The tree is kept mounted until afterEach so React's event delegation (rooted
- *  at the container) stays alive for click/contextmenu dispatch. */
+/** Render the tree tab and return the mounted `[data-dsh-codex-project-tab]`
+ *  node. Records which files were opened into the preview tab. */
 const mounted: Array<{ root: Root; container: HTMLElement }> = []
-async function renderTab(api: SpacesApi, ctx: ClientRuntimeContext): Promise<HTMLElement> {
+async function renderTab(api: SpacesApi, ctx: ClientRuntimeContext):
+  Promise<{ tab: HTMLElement; opened: string[] }> {
+  const opened: string[] = []
   const container = document.createElement('div')
   document.body.appendChild(container)
   const root = createRoot(container)
   await act(async () => {
-    root.render(createElement(ProjectTab, { ctx, api, scope }))
+    root.render(createElement(ProjectTab, {
+      ctx,
+      api,
+      scope,
+      openPreview: (path) => { opened.push(path) },
+    }))
   })
   await act(async () => {})
   mounted.push({ root, container })
   const tab = container.querySelector<HTMLElement>('[data-dsh-codex-project-tab]')
   expect(tab).toBeDefined()
-  return tab!
+  return { tab: tab!, opened }
 }
 
 /** Find a tree row whose text content includes `text`. */
@@ -134,14 +143,14 @@ describe('ProjectTab', () => {
 
   it('shows the session cwd as a single root when no project is configured', async () => {
     const fake = fakeApi(null)
-    const tab = await renderTab(fake.api, fakeCtx().ctx)
+    const { tab } = await renderTab(fake.api, fakeCtx().ctx)
     expect(tab.textContent).not.toContain('没有项目共享配置')
     expect(tab.textContent).toContain('proj')
   })
 
   it('renders the main root, shared dir, and a missing-dir flag', async () => {
     const fake = fakeApi(PROJECT)
-    const tab = await renderTab(fake.api, fakeCtx().ctx)
+    const { tab } = await renderTab(fake.api, fakeCtx().ctx)
     expect(tab.textContent).toContain('proj (主)')
     expect(tab.textContent).toContain('shared')
     expect(tab.textContent).toContain('(⚠ directory missing)')
@@ -158,7 +167,7 @@ describe('ProjectTab', () => {
       truncated: false,
     }
     const fake = fakeApi(PROJECT, { [ROOT_A]: listing })
-    const tab = await renderTab(fake.api, fakeCtx().ctx)
+    const { tab } = await renderTab(fake.api, fakeCtx().ctx)
     await act(async () => {
       rowByText(tab, 'proj (主)').click()
     })
@@ -168,7 +177,7 @@ describe('ProjectTab', () => {
     expect(tab.textContent).toContain('readme.md')
   })
 
-  it('previews a file inline on click (no editor jump)', async () => {
+  it('opens a file into its own preview tab on click (no inline preview)', async () => {
     const listing: ProjectListing = {
       path: ROOT_A,
       entries: [
@@ -177,7 +186,7 @@ describe('ProjectTab', () => {
       truncated: false,
     }
     const fake = fakeApi(PROJECT, { [ROOT_A]: listing })
-    const tab = await renderTab(fake.api, fakeCtx().ctx)
+    const { tab, opened } = await renderTab(fake.api, fakeCtx().ctx)
     await act(async () => {
       rowByText(tab, 'proj (主)').click()
     })
@@ -185,71 +194,19 @@ describe('ProjectTab', () => {
     await act(async () => {
       rowByText(tab, 'readme.md').click()
     })
-    await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)) })
-    expect(fake.read).toEqual([{ cwd: ROOT_A, path: `${ROOT_A}\\readme.md` }])
-    // Text files show the filename in the editor toolbar, not a duplicate header.
-    expect(tab.querySelector('.dsh-cxp-preview-title')).toBeNull()
-    expect(tab.querySelector('.dsh-cxp-preview-filename')?.textContent).toContain('readme.md')
+    // The tree itself does not fetch the file's content — it hands the path to
+    // the preview tab via openPreview.
+    expect(fake.read).toHaveLength(0)
+    expect(opened).toEqual([`${ROOT_A}\\readme.md`])
+    // No inline preview chrome lives in the tree-only tab.
+    expect(tab.querySelector('.dsh-cxp-preview-filename')).toBeNull()
   })
 
-  it('renders markdown preview as semantic output, not the raw source', async () => {
-    const listing: ProjectListing = {
-      path: ROOT_A,
-      entries: [
-        { name: 'notes.md', path: `${ROOT_A}\\notes.md`, isDir: false, hidden: false, isSymlink: false, broken: false },
-      ],
-      truncated: false,
-    }
-    const fake = fakeApi(PROJECT, { [ROOT_A]: listing })
-    fake.api.readFile = async () => ({ content: '# Title\n\nsome *text*', truncated: false })
-    const tab = await renderTab(fake.api, fakeCtx().ctx)
-    await act(async () => {
-      rowByText(tab, 'proj (主)').click()
-    })
-    await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)) })
-    await act(async () => {
-      rowByText(tab, 'notes.md').click()
-    })
-    await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)) })
-    const markdown = tab.querySelector('.dsh-cxp-preview-markdown')
-    expect(markdown, 'markdown preview host is present').not.toBeNull()
-    // Markdown renders as semantic nodes (heading + emphasis), not as literal
-    // source text — a raw `MessageText` passthrough would keep the `#`/`*`.
-    expect(markdown!.querySelector('h1')?.textContent).toBe('Title')
-    expect(markdown!.querySelector('em')?.textContent).toBe('text')
-    expect(markdown!.textContent).not.toContain('# Title')
-  })
-
-  it('keeps the inline editor host mounted and reveals it on 编辑', async () => {
-    const listing: ProjectListing = {
-      path: ROOT_A,
-      entries: [
-        { name: 'readme.md', path: `${ROOT_A}\\readme.md`, isDir: false, hidden: false, isSymlink: false, broken: false },
-      ],
-      truncated: false,
-    }
-    const fake = fakeApi(PROJECT, { [ROOT_A]: listing })
-    const tab = await renderTab(fake.api, fakeCtx().ctx)
-    await act(async () => {
-      rowByText(tab, 'proj (主)').click()
-    })
-    await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)) })
-    await act(async () => {
-      rowByText(tab, 'readme.md').click()
-    })
-    await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)) })
-    // Markdown starts in preview mode; the CodeMirror host is always mounted
-    // (hidden via the `hidden` attribute) so the view is created on mount and
-    // the edit toggle never renders a blank page.
-    const cmHost = tab.querySelector<HTMLElement>('.dsh-cxp-preview-cm')
-    expect(cmHost).not.toBeNull()
-    expect(cmHost!.hasAttribute('hidden')).toBe(true)
-    await act(async () => {
-      const editButton = Array.from(tab.querySelectorAll('button')).find(b => b.textContent?.trim() === '编辑')
-      expect(editButton).toBeDefined()
-      editButton!.click()
-    })
-    expect(cmHost!.hasAttribute('hidden')).toBe(false)
+  it('does not render an inline preview pane or path-jump preview box', async () => {
+    const fake = fakeApi(PROJECT)
+    const { tab } = await renderTab(fake.api, fakeCtx().ctx)
+    expect(tab.querySelector('.dsh-cxp-preview-pane')).toBeNull()
+    expect(tab.querySelector('.dsh-cxp-tab-path-input')).toBeNull()
   })
 
   it('references a file in chat via the hover @ button', async () => {
@@ -262,7 +219,7 @@ describe('ProjectTab', () => {
     }
     const fake = fakeApi(PROJECT, { [ROOT_A]: listing })
     const runtime = fakeCtx()
-    const tab = await renderTab(fake.api, runtime.ctx)
+    const { tab } = await renderTab(fake.api, runtime.ctx)
     await act(async () => {
       rowByText(tab, 'proj (主)').click()
     })
@@ -278,7 +235,7 @@ describe('ProjectTab', () => {
 
   it('opens the context menu on right-click (用文件管理器打开 item present)', async () => {
     const fake = fakeApi(PROJECT)
-    const tab = await renderTab(fake.api, fakeCtx().ctx)
+    const { tab } = await renderTab(fake.api, fakeCtx().ctx)
     await act(async () => {
       rowByText(tab, 'proj (主)').dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }))
     })
@@ -288,7 +245,56 @@ describe('ProjectTab', () => {
   it('surfaces a project-fetch error instead of crashing', async () => {
     const fake = fakeApi(null)
     fake.api.project = async () => { throw new Error('boom') }
-    const tab = await renderTab(fake.api, fakeCtx().ctx)
+    const { tab } = await renderTab(fake.api, fakeCtx().ctx)
     expect(tab.textContent).toContain('boom')
+  })
+})
+
+describe('FilePreviewTab', () => {
+  afterEach(() => {
+    document.body.innerHTML = ''
+  })
+
+  const tabProps = (path?: string, cwd = ROOT_A): SidebarTabComponentProps => ({
+    ctx: fakeCtx().ctx,
+    scope: { sessionId: 's1', cwd },
+    tab: path === undefined ? undefined : { path, title: path.split('\\').pop() },
+  })
+
+  it('renders the markdown preview for the tab path through the plugin API', async () => {
+    const path = `${ROOT_A}\\notes.md`
+    const fake = fakeApi(PROJECT)
+    const recorder = fake.read
+    fake.api.readFile = async (cwd, filePath) => {
+      recorder.push({ cwd, path: filePath })
+      return { content: '# Title\n\nsome *text*', truncated: false }
+    }
+    const container = document.createElement('div')
+    document.body.appendChild(container)
+    const root = createRoot(container)
+    await act(async () => {
+      root.render(createElement(FilePreviewTab, { api: fake.api, tabProps: tabProps(path) }))
+    })
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)) })
+    expect(fake.read).toEqual([{ cwd: ROOT_A, path }])
+    const markdown = container.querySelector('.dsh-cxp-preview-markdown')
+    expect(markdown, 'markdown preview host is present').not.toBeNull()
+    expect(markdown!.querySelector('h1')?.textContent).toBe('Title')
+    root.unmount()
+    container.remove()
+  })
+
+  it('shows a placeholder when no path is seeded', async () => {
+    const fake = fakeApi(PROJECT)
+    const container = document.createElement('div')
+    document.body.appendChild(container)
+    const root = createRoot(container)
+    await act(async () => {
+      root.render(createElement(FilePreviewTab, { api: fake.api, tabProps: tabProps(undefined) }))
+    })
+    await act(async () => {})
+    expect(container.textContent).toContain('未指定要预览的文件')
+    root.unmount()
+    container.remove()
   })
 })

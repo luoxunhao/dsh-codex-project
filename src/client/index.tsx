@@ -13,13 +13,15 @@
  * external plugin must not take the GUI down.
  */
 import { createElement } from 'react'
-import { IconFolderOpenOutline16 } from '@deepseek-ai/dsh-client-ui-primitives'
+import { IconCodeOutline16, IconFolderOpenOutline16 } from '@deepseek-ai/dsh-client-ui-primitives'
 
-import type { Context, BetterSidebarService } from './context.ts'
+import type { Context, BetterSidebarService, SidebarTabScope } from './context.ts'
 import { createSpacesApi } from './api.ts'
 import { createFileReferenceSource } from './file-reference.ts'
 import { mountWorkspaceMenuManageEntry } from './workspace-menu.ts'
+import { basename } from './paths.ts'
 import { ProjectTab } from './project-tab.tsx'
+import { FilePreviewTab } from './preview-tab.tsx'
 import { injectStyles } from './styles.ts'
 
 /** Probe for an optional cordis service without going through the proxy. */
@@ -78,6 +80,27 @@ export function apply(ctx: Context): void {
   }))
   const betterSidebar = probeService(ctx, 'betterSidebar') as BetterSidebarService | undefined
   if (betterSidebar !== undefined) {
+    // Per-file preview opened in its own sidebar tab. Hidden from the + menu:
+    // it is only opened programmatically from the 项目文件夹 tree. A path-derived
+    // id lets better-sidebar's open id-safety-net focus an already-open tab of
+    // the same file instead of duplicating it.
+    mount('文件预览 tab', () => betterSidebar.registerTab({
+      id: 'codex-project:file',
+      title: () => '文件预览',
+      icon: createElement(IconCodeOutline16, { size: 16 }),
+      order: 46,
+      hidden: true,
+      component: (tabProps) => createElement(FilePreviewTab, { api, tabProps }),
+    }))
+    // Open one project file in its own preview tab (lands in the active session).
+    const openPreview = (path: string): void => {
+      betterSidebar.openTab({
+        type: 'codex-project:file',
+        title: basename(path),
+        path,
+        id: `codex-project:file:${path}`,
+      })
+    }
     mount('项目文件夹 tab', () => betterSidebar.registerTab({
       id: 'codex-project:project',
       title: () => '项目文件夹',
@@ -88,6 +111,7 @@ export function apply(ctx: Context): void {
         ctx: tabCtx,
         api,
         scope,
+        openPreview,
       }),
     }))
   } else {

@@ -1,26 +1,29 @@
 /**
- * 项目文件夹 tab (registered into better-sidebar): a Files-tab-like panel of
+ * 项目文件夹 tab (registered into better-sidebar): a FILE-TREE-ONLY panel of
  * the project anchored at the current session's cwd — the main workspace root
- * plus every shared additional dir (cross-drive). The layout mirrors the
- * better-sidebar Files tab: a path input box on top, the project file tree
- * docked on the right (drag-resizable, toggleable), and an inline preview of
- * the selected file on the left (image/PDF/markdown/html/code/binary). The
- * preview is read-only — inline markdown/html/code rendering, no editor jump,
- * no editing. Right-clicking a row opens a context menu (open the folder
- * locally, copy the relative / absolute path, or reference the file in chat
- * as a chip that shows the file name and carries its absolute path into the
- * model context); hovering a row reveals the @-reference button.
+ * plus every shared additional dir (cross-drive). It mirrors the better-sidebar
+ * Files-tab explorer look: lazy directory tree, folder rows that expand in
+ * place, file rows that open their preview in a SEPARATE sidebar tab (the
+ * plugin's `codex-project:file` tab, which reads through the plugin's
+ * multi-root routes — so cross-drive shared dirs preview fine). No inline
+ * preview/editor pane lives in this tab; clicking a file hands it to
+ * `openPreview`.
  *
  * With no shared config the tab falls back to the session's own working
  * directory as a single root, so the tree always has content. The tree is
  * self-contained (the client bundle's purity gate forbids value-importing
- * better-sidebar's FileTree): each directory loads its level lazily through
- * the plugin's own /list route, fenced to the project roots on the host; file
- * previews go through the plugin's /read, /write, and /file routes.
+ * better-sidebar's FileTree): each directory loads its level lazily through the
+ * plugin's own /list route, fenced to the project roots on the host. Rows
+ * mirror better-sidebar's explorer metrics via the shared `--dsw-*` tokens.
+ *
+ * Row interactions: expand/collapse a directory; open a file in the preview
+ * tab; right-click a row for a context menu (open the folder locally, copy the
+ * relative / absolute path, or reference the file in chat as a chip); hover a
+ * row to reveal the @-reference button.
  * @module dsh-codex-project/client/project-tab
  */
 
-import { useCallback, useEffect, useRef, useState, type MouseEvent, type ReactNode } from 'react'
+import { useCallback, useEffect, useState, type MouseEvent, type ReactNode } from 'react'
 import {
   IconCodeOutline16,
   IconCopyOutline16,
@@ -28,7 +31,6 @@ import {
   IconFolderOpen16,
   IconFolderOpenOutline16,
   IconLinkOutline16,
-  IconPanelLeftOutline16,
   IconRefreshOutline16,
   IconWarningOutline16,
   Menu,
@@ -39,13 +41,15 @@ import type { ProjectEntry, ProjectListing, ProjectView, SpacesApi } from './api
 import type { ClientRuntimeContext, SidebarTabScope } from './context.ts'
 import { insertFileReference } from './file-reference.ts'
 import { basename, relativePath, resolvePath } from './paths.ts'
-import { PreviewPane } from './preview-pane.tsx'
 
-/** The tab's render props: the client ctx, the dirs API, and the session scope. */
+/** The tab's render props: the client ctx, the dirs API, the session scope, and
+ *  how to open a file's preview (into a separate sidebar tab). */
 export interface ProjectTabProps {
   ctx: ClientRuntimeContext
   api: SpacesApi
   scope: SidebarTabScope
+  /** Open a file's preview in its own sidebar tab. */
+  openPreview: (path: string) => void
 }
 
 /** One top-level project root. */
@@ -54,20 +58,15 @@ type RootRow = { path: string; kind: 'main' | 'shared' | 'missing' }
 /** How long the row's "已复制" label stays after a successful copy. */
 const COPIED_MS = 1200
 
-/** Default / bounds of the docked tree width. */
-const DEFAULT_TREE_WIDTH = 300
-const MIN_TREE_WIDTH = 180
-const MAX_TREE_WIDTH = 640
-
 /** A context-menu target: the row path, whether it is a file, plus the cursor position. */
 type RowMenuState = { path: string; isFile: boolean; x: number; y: number } | null
 
 /**
- * The 项目文件夹 tab body.
- * @param props - the client ctx, the dirs API, the better-sidebar service, and the session scope.
+ * The 项目文件夹 tree-only tab body.
+ * @param props - the client ctx, the dirs API, the session scope, and openPreview.
  */
 export function ProjectTab(props: ProjectTabProps): ReactNode {
-  const { ctx, api, scope } = props
+  const { ctx, api, scope, openPreview } = props
   const cwd = scope.cwd
   const [project, setProject] = useState<ProjectView | null | undefined>(undefined)
   const [error, setError] = useState<string | null>(null)
@@ -76,14 +75,6 @@ export function ProjectTab(props: ProjectTabProps): ReactNode {
   const [copiedPath, setCopiedPath] = useState<string | null>(null)
   /** The open context menu: the target row path plus the cursor position. */
   const [rowMenu, setRowMenu] = useState<RowMenuState>(null)
-  /** The file currently previewed inline (null = the empty/welcome state). */
-  const [openPath, setOpenPath] = useState<string | null>(null)
-  /** The path input box value. */
-  const [pathInput, setPathInput] = useState(cwd ?? '')
-  /** Whether the docked tree is visible (toggleable from the header). */
-  const [treeVisible, setTreeVisible] = useState(true)
-  /** The docked tree width (drag-resizable via the gutter). */
-  const [treeWidth, setTreeWidth] = useState(DEFAULT_TREE_WIDTH)
 
   const refresh = useCallback(async () => {
     if (cwd === undefined || cwd === '') {
@@ -101,25 +92,11 @@ export function ProjectTab(props: ProjectTabProps): ReactNode {
 
   useEffect(() => { void refresh() }, [refresh, reloadKey])
 
-  /** Open a file in the inline preview (and mirror it into the path box). */
-  const openFile = useCallback((path: string) => {
-    setOpenPath(path)
-    setPathInput(path)
-  }, [])
-
   const openDir = useCallback((path: string) => {
     void api.openDirectory(path).catch((reason) => {
       console.error('[dsh-codex-project] open directory failed:', reason)
     })
   }, [api])
-
-  /** Resolve the path box (relative → absolute under the cwd) and preview it. */
-  const goToPath = useCallback((input: string) => {
-    if (cwd === undefined || cwd === '') return
-    const resolved = resolvePath(cwd, input)
-    setOpenPath(resolved)
-    setPathInput(resolved)
-  }, [cwd])
 
   /** Copy `text`; on success flip the row's copied label for a moment. */
   const copyPath = useCallback((text: string, path: string): void => {
@@ -161,38 +138,10 @@ export function ProjectTab(props: ProjectTabProps): ReactNode {
     setRowMenu({ path, isFile, x: event.clientX, y: event.clientY })
   }
 
-  const startResize = (event: MouseEvent): void => {
-    event.preventDefault()
-    const startX = event.clientX
-    const startW = treeWidth
-    const onMove = (ev: globalThis.MouseEvent): void => {
-      setTreeWidth(Math.max(MIN_TREE_WIDTH, Math.min(MAX_TREE_WIDTH, startW + startX - ev.clientX)))
-    }
-    const onUp = (): void => {
-      window.removeEventListener('pointermove', onMove)
-      window.removeEventListener('pointerup', onUp)
-    }
-    window.addEventListener('pointermove', onMove)
-    window.addEventListener('pointerup', onUp)
-  }
-
   const header = (
     <div className="dsh-cxp-tab-header">
       <span className="dsh-cxp-tab-title">项目文件夹</span>
-      <input
-        className="dsh-cxp-tab-path-input"
-        value={pathInput}
-        placeholder="输入文件路径，回车预览"
-        spellCheck={false}
-        title="输入文件路径，回车在左侧预览（支持绝对路径或相对 cwd 的路径）"
-        onChange={(event) => { setPathInput(event.target.value) }}
-        onKeyDown={(event) => {
-          if (event.key === 'Enter') goToPath(pathInput)
-        }}
-      />
-      <button type="button" className="dsh-cxp-tab-icon-btn" title={treeVisible ? '隐藏文件树' : '显示文件树'} onClick={() => { setTreeVisible(visible => !visible) }}>
-        <IconPanelLeftOutline16 />
-      </button>
+      <span style={{ flex: 1 }} />
       <button type="button" className="dsh-cxp-tab-icon-btn" title="刷新" onClick={() => { setReloadKey(key => key + 1) }}>
         <IconRefreshOutline16 />
       </button>
@@ -214,7 +163,7 @@ export function ProjectTab(props: ProjectTabProps): ReactNode {
         ...project.dirs.map(path => ({ path, kind: 'shared' as const })),
         ...project.missingDirs.map(path => ({ path, kind: 'missing' as const })),
       ]
-    const tree = (
+    body = (
       <div className="dsh-cxp-tab-tree">
         {roots.length === 0 ? (
           <div className="dsh-cxp-tab-note">等待工作区…</div>
@@ -232,35 +181,13 @@ export function ProjectTab(props: ProjectTabProps): ReactNode {
               name={name}
               depth={0}
               defaultOpen={false}
-              onOpenFile={openFile}
+              onOpenFile={openPreview}
               onOpenDir={openDir}
               rowAction={rowAction}
               openRowMenu={openRowMenu}
             />
           )
         })}
-      </div>
-    )
-    body = (
-      <div className="dsh-cxp-tab-body">
-        <div className="dsh-cxp-preview-main">
-          {openPath !== null && cwd !== undefined
-            ? <PreviewPane key={openPath} api={api} cwd={cwd} path={openPath} />
-            : (
-              <div className="dsh-cxp-preview-empty">
-                <div className="dsh-cxp-preview-empty-title">从文件树或上方路径框选择一个文件</div>
-                <div className="dsh-cxp-preview-empty-hint">在左侧内联预览；图片 / PDF / Markdown / HTML / 代码均可直接查看与编辑</div>
-              </div>
-            )}
-        </div>
-        {treeVisible && (
-          <>
-            <div className="dsh-cxp-tree-resize" onPointerDown={startResize} title="拖动调整文件树宽度" />
-            <div className="dsh-cxp-tree-dock" style={{ width: treeWidth }}>
-              {tree}
-            </div>
-          </>
-        )}
       </div>
     )
   }
@@ -412,7 +339,7 @@ function DirNode(props: {
   )
 }
 
-/** A file row: opens the inline preview on click. */
+/** A file row: opens its preview in a separate tab on click. */
 function FileRow(props: {
   entry: ProjectEntry
   depth: number
