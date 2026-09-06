@@ -46,7 +46,7 @@ import {
 
 import type { ProjectEntry, ProjectListing, ProjectSearchResult, ProjectView, SpacesApi, UploadFile } from './api.ts'
 import type { ClientRuntimeContext, SidebarTabScope } from './context.ts'
-import { insertFileReference } from './file-reference.ts'
+import { appendChatReference } from './file-reference.ts'
 import { basename, relativePath, resolvePath } from './paths.ts'
 
 /** The tab's render props: the client ctx, the dirs API, the session scope, and
@@ -222,7 +222,9 @@ export function ProjectTab(props: ProjectTabProps): ReactNode {
   }, [])
 
   const reference = useCallback((path: string, isDirectory = false) => {
-    insertFileReference(ctx, scope, path, { isDirectory })
+    // Append as accumulating plain text (not a single structured chip) so
+    // referencing several files/dirs stacks in the draft (option A).
+    appendChatReference(ctx, scope, { path, isDirectory })
   }, [ctx, scope])
 
   /** The row's trailing feedback: a transient "已复制" label right after a copy

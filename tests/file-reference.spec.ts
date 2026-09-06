@@ -19,6 +19,8 @@ import type {
   ProjectRoots,
 } from '../src/client/file-reference.ts'
 import {
+  appendChatReference,
+  chatReferenceMention,
   createFileReferenceSource,
   crumbsFor,
   decodeValue,
@@ -444,5 +446,57 @@ describe('insertFileReference', () => {
     }
     insertFileReference(ctx, scope, 'E:\\proj\\readme.md')
     expect(emitted).toBe(false)
+  })
+})
+
+describe('chatReferenceMention / appendChatReference (plain-text accumulation)', () => {
+  const scope: SidebarTabScope = { sessionId: 's1', cwd: 'E:\\proj' }
+
+  it('mentions a path relative to the session cwd', () => {
+    expect(chatReferenceMention(scope.cwd!, { path: 'E:\\proj\\readme.md' })).toBe('@readme.md')
+    expect(chatReferenceMention(scope.cwd!, { path: 'E:\\proj\\src\\index.ts' })).toBe('@src/index.ts')
+  })
+
+  it('mentions a directory with a trailing slash', () => {
+    expect(chatReferenceMention(scope.cwd!, { path: 'E:\\proj\\src', isDirectory: true })).toBe('@src/')
+  })
+
+  it('falls back to the absolute path for a cross-drive / unrelated root', () => {
+    expect(chatReferenceMention(scope.cwd!, { path: 'D:\\shared\\lib\\notes.md' })).toBe('@D:/shared/lib/notes.md')
+  })
+
+  it('appends accumulating plain-text references to the draft', () => {
+    const writes: string[] = []
+    let draft = ''
+    const ctx: ClientRuntimeContext = {
+      get: () => ({ input: { for: () => ({
+        state: { getSnapshot: () => ({ draft, draftRev: 0 }) },
+        setDraft: (text: string) => { draft = text; writes.push(text) },
+      }) } }),
+      sessions: { scope: () => ({ sessionId: scope.sessionId }) },
+    }
+    appendChatReference(ctx, scope, { path: 'E:\\proj\\readme.md' })
+    appendChatReference(ctx, scope, { path: 'E:\\proj\\src', isDirectory: true })
+    expect(draft).toBe('@readme.md @src/')
+    expect(writes).toHaveLength(2)
+  })
+
+  it('appends cleanly when the draft already ends with no whitespace', () => {
+    const writes: string[] = []
+    let draft = 'hello'
+    const ctx: ClientRuntimeContext = {
+      get: () => ({ input: { for: () => ({
+        state: { getSnapshot: () => ({ draft, draftRev: 0 }) },
+        setDraft: (text: string) => { draft = text; writes.push(text) },
+      }) } }),
+      sessions: { scope: () => ({ sessionId: scope.sessionId }) },
+    }
+    appendChatReference(ctx, scope, { path: 'E:\\proj\\a.ts' })
+    expect(draft).toBe('hello @a.ts')
+  })
+
+  it('no-ops when the conversation service is missing', () => {
+    const ctx: ClientRuntimeContext = { get: () => undefined, sessions: { scope: () => ({}) } }
+    expect(() => appendChatReference(ctx, scope, { path: 'E:\\proj\\readme.md' })).not.toThrow()
   })
 })

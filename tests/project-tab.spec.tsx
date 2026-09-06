@@ -80,35 +80,30 @@ function fakeApi(project: ProjectView | null, listings: Record<string, ProjectLi
 
 const scope = { sessionId: 's1', cwd: ROOT_A }
 
-/** A fake client runtime ctx recording dispatched file-reference chips. */
-function fakeCtx(): { ctx: ClientRuntimeContext; chips: Array<{ ref: string; label: string }> } {
-  const chips: Array<{ ref: string; label: string }> = []
+/** A fake client runtime ctx: a mutable composer draft that records setDraft writes. */
+function fakeCtx(): { ctx: ClientRuntimeContext; drafts: string[]; draft: () => string } {
+  let draftText = ''
+  const drafts: string[] = []
   const scopeOf: Record<string, unknown> = {}
   const ctx: ClientRuntimeContext = {
     get: (service) => service === 'conversation'
       ? {
           input: {
-            for: (_actx: unknown) => ({
-              state: { getSnapshot: () => ({ draft: '', draftRev: 0 }) },
-              setDraft: (_text: string) => {},
+            for: () => ({
+              state: { getSnapshot: () => ({ draft: draftText, draftRev: 0 }) },
+              setDraft: (text: string) => { draftText = text; drafts.push(text) },
             }),
           },
         }
       : undefined,
     sessions: {
-      scope: (sessionId) => {
-        const actx = scopeOf[sessionId] ??= {
-          sessionId,
-          emit: (_event: string, payload: unknown) => {
-            const { reference } = payload as { reference: { ref: string; label: string } }
-            chips.push({ ref: reference.ref, label: reference.label })
-          },
-        }
+      scope: () => {
+        const actx = scopeOf[scope.sessionId] ??= { sessionId: scope.sessionId }
         return actx
       },
     },
   }
-  return { ctx, chips }
+  return { ctx, drafts, draft: () => draftText }
 }
 
 /** Render the tree tab and return the mounted `[data-dsh-codex-project-tab]`
@@ -335,7 +330,14 @@ describe('ProjectTab', () => {
     // The hover-@ button is gone; the row carries no trailing @ affordance.
     expect(rowByText(tab, 'readme.md').querySelector('.dsh-cxp-row-ref')).toBeNull()
     await clickMenu('引用到对话')
-    expect(runtime.chips).toEqual([{ ref: `${ROOT_A}\\readme.md`, label: 'readme.md' }])
+    // Plain-text reference: the draft now reads `@readme.md` (relative to cwd).
+    expect(runtime.draft()).toBe('@readme.md')
+    // Referencing again ACCUMULATES rather than replacing the single chip.
+    await act(async () => {
+      rowByText(tab, 'readme.md').dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }))
+    })
+    await clickMenu('引用到对话')
+    expect(runtime.draft()).toBe('@readme.md @readme.md')
   })
 
   it('references a directory via the right-click 引用到对话 menu item', async () => {
@@ -357,7 +359,8 @@ describe('ProjectTab', () => {
       rowByText(tab, 'src').dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }))
     })
     await clickMenu('引用到对话')
-    expect(runtime.chips).toEqual([{ ref: `E:/proj/src/`, label: 'src/' }])
+    // A directory references as `@src/` (trailing slash marks "list it").
+    expect(runtime.draft()).toBe('@src/')
   })
 
   it('directory context menu: 引用到对话 + 用文件管理器打开 + 上传到此处, no 下载', async () => {
