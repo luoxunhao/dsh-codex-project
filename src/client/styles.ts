@@ -468,31 +468,6 @@ const CSS = `
   flex: none;
   color: var(--dsw-alias-label-tertiary);
 }
-[data-dsh-codex-project-tab] .dsh-cxp-row-ref {
-  flex: none;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 24px;
-  height: 24px;
-  margin-left: 4px;
-  padding: 0;
-  border: none;
-  border-radius: 6px;
-  background: transparent;
-  color: var(--dsw-alias-label-secondary);
-  cursor: pointer;
-  font-size: 13px;
-  opacity: 0;
-}
-[data-dsh-codex-project-tab] .dsh-cxp-tree-row:hover .dsh-cxp-row-ref,
-[data-dsh-codex-project-tab] .dsh-cxp-row-ref:focus-visible {
-  opacity: 1;
-}
-[data-dsh-codex-project-tab] .dsh-cxp-row-ref:hover {
-  background: var(--dsw-alias-bg-layer-2, rgba(128, 128, 128, 0.12));
-  color: var(--dsw-alias-label-primary);
-}
 [data-dsh-codex-project-tab] .dsh-cxp-row-copied {
   flex: none;
   display: inline-flex;
