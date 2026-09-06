@@ -124,11 +124,26 @@ export interface ClientRuntimeContext {
   }
 }
 
+/** One reference-chip occurrence in the composer draft (clipboard coordinates). */
+export interface DraftOccurrence {
+  /** Clipboard offset of the chip's clipboard projection. */
+  offset: number
+  /** Length of the chip's clipboard projection. */
+  length: number
+}
+
 /** The composer draft input face (subset of the conversation service). */
 export interface DraftInput {
   input: {
     for(sessionScope: unknown): {
-      state: { getSnapshot(): { draft: string; draftRev: number } }
+      state: { getSnapshot(): {
+        /** Clipboard-text projection of the editor document (chips expanded). */
+        draft: string
+        /** Reference-chip occurrences, in clipboard coordinates. */
+        occurrences: readonly DraftOccurrence[]
+        /** Input revision (CAS for every slash/input-* edit). */
+        draftRev: number
+      } }
       setDraft(text: string): void
     }
   }
@@ -150,10 +165,19 @@ export interface FileReferenceInsert {
   appearance?: 'file' | 'folder' | 'session'
 }
 
-/** The zero-width insertion span (current draft end + CAS revision). */
+/**
+ * A zero-width insertion span in DETECT coordinates (the plane the composer's
+ * `slash/input-insert-reference` expects, where each chip counts as one U+FFFC),
+ * plus the CAS revision. `start`/`end` are equal (a collapsed span at the true
+ * detect end); `draftRev` must be the current input revision or the edit is
+ * rejected.
+ */
 export interface FileReferenceSpan {
+  /** Detect offset of the insertion point (must equal `end`). */
   start: number
+  /** Detect offset of the insertion point (must equal `start`). */
   end: number
+  /** Input revision (CAS). */
   draftRev: number
 }
 

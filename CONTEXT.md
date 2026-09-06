@@ -18,7 +18,7 @@
 ## 界面概念
 
 - **管理工作区（ManageDialog）**：插件自己的小弹窗，入口 = 原生工作区「…」菜单注入的「管理工作区」项（样式与原生「重命名」项对齐）。内容：该工作区的共享子目录列表（添加/移除）、无配置时空状态（添加第一个子目录即建配置）。模型就是"工作区 → [额外可写目录]"，无主根交接概念。
-- **项目文件夹（ProjectTab）**：better-sidebar 侧边栏注册的一个 tab（插件在 `betterSidebar.registerTab` 存在时注册）。显示当前会话 cwd 命中项目的多根目录树——主根 + 各共享子目录（可跨盘符），目录按层懒加载（走插件自有 /list 路由，host 侧 fence 到项目可写根）。**无项目配置时**不空状态，退化为以会话 cwd 为单根的目录树（树恒有内容）。布局仿 Files tab：顶部路径输入框 + 右侧可拖拽/可隐藏的文件树 + 左侧选中文件的内联预览与编辑（图片 / PDF / Markdown / HTML / 代码编辑与 Ctrl+S 保存 / 二进制下载，走插件自有 /read、/write、/file 路由，fence 到项目可写根）；点击文件即内联预览，不跳 better-sidebar 编辑器（其 editor chunk 加载报错）。右键行 → 上下文菜单（**引用到对话**（文件/目录）`@<相对路径>`、用系统文件管理器打开、复制相对路径、复制绝对路径）；不再有 hover 行的 `@` 引用按钮（引用统一走右键菜单）。行样式复用 better-sidebar explorer（34px 行高、8px 圆角、22px 缩进、hover 填充），引用路径经插件自有 `relativePath` 相对会话 cwd 计算。
+- **项目文件夹（ProjectTab）**：better-sidebar 侧边栏注册的一个 tab（插件在 `betterSidebar.registerTab` 存在时注册）。显示当前会话 cwd 命中项目的多根目录树——主根 + 各共享子目录（可跨盘符），目录按层懒加载（走插件自有 /list 路由，host 侧 fence 到项目可写根）。**无项目配置时**不空状态，退化为以会话 cwd 为单根的目录树（树恒有内容）。布局仿 Files tab：顶部路径输入框 + 右侧可拖拽/可隐藏的文件树 + 左侧选中文件的内联预览与编辑（图片 / PDF / Markdown / HTML / 代码编辑与 Ctrl+S 保存 / 二进制下载，走插件自有 /read、/write、/file 路由，fence 到项目可写根）；点击文件即内联预览，不跳 better-sidebar 编辑器（其 editor chunk 加载报错）。右键行 → 上下文菜单（**引用到对话**（文件/目录）：向会话输入框追加一个**真正的 dsh reference chip**（等同用户输入 `@` 选中该文件/目录；连续引用可按 detect 坐标叠加多个，目录 chip 带结尾 `/`）、用系统文件管理器打开、复制相对路径、复制绝对路径）；不再有 hover 行的 `@` 引用按钮（引用统一走右键菜单）。行样式复用 better-sidebar explorer（34px 行高、8px 圆角、22px 缩进、hover 填充），引用路径经插件自有 `relativePath` 相对会话 cwd 计算。
 - **打开本地目录（OpenDirectory）**：工作区「…」菜单注入的项（及树中目录右键）——用系统文件管理器打开该文件夹。走**插件自有路由**（POST /codex-project/api/open-directory，host 侧 spawn explorer.exe），不走 workspaces.openPath——那是聊天文件打开通道，better-sidebar 会把它劫持进侧边栏编辑器（目录会报 "is a directory"）。
 
 ## 关系

@@ -22,6 +22,7 @@ import {
   createFileReferenceSource,
   crumbsFor,
   decodeValue,
+  detectEnd,
   FILE_REF_SOURCE,
   formatProjectMention,
   insertFileReference,
@@ -409,10 +410,32 @@ describe('insertFileReference', () => {
   const scope: SidebarTabScope = { sessionId: 's1', cwd: 'E:\\proj' }
 
   function harness() {
-    const chips: Array<{ reference: Record<string, unknown>; span: unknown }> = []
+    const chips: Array<{ reference: Record<string, unknown>; span: { start: number; end: number; draftRev: number } }> = []
+    // The composer's public state: clipboard draft + chip occurrences + revision.
+    // After each emit the revision bumps and a chip is recorded, so successive
+    // insertFileReference calls observe a growing draft/occurrence set — exactly
+    // like the real composer between two user-typed `@`.
+    let draft = ''
+    let draftRev = 1
+    const occurrences: Array<{ offset: number; length: number }> = []
+    const recordChip = (payload: { reference: { clipboardText: string } }): void => {
+      const clip = payload.reference.clipboardText
+      occurrences.push({ offset: draft.length, length: clip.length })
+      draft += clip
+      draftRev += 1
+    }
     const ctx: ClientRuntimeContext = {
-      get: () => ({ input: { for: () => ({ state: { getSnapshot: () => ({ draft: '', draftRev: 3 }) } }) } }),
-      sessions: { scope: () => ({ emit: (_event: string, payload: unknown) => { chips.push(payload as never) } }) },
+      get: () => ({ input: { for: () => ({
+        state: { getSnapshot: () => ({ draft, occurrences, draftRev }) },
+        setDraft: (_text: string) => {},
+      }) } }),
+      sessions: { scope: () => ({
+        emit: (_event: string, payload: unknown) => {
+          const p = payload as { reference: { clipboardText: string } }
+          chips.push(payload as never)
+          recordChip(p)
+        },
+      }) },
     }
     return { chips, ctx }
   }
@@ -425,7 +448,8 @@ describe('insertFileReference', () => {
     expect(chips[0]!.reference.ref).toBe('E:\\proj\\readme.md')
     expect(chips[0]!.reference.label).toBe('readme.md')
     expect(chips[0]!.reference.appearance).toBe('file')
-    expect(chips[0]!.span).toEqual({ start: 0, end: 0, draftRev: 3 })
+    // First chip: detect end == clipboard end == 0.
+    expect(chips[0]!.span).toEqual({ start: 0, end: 0, draftRev: 1 })
   })
 
   it('marks a directory chip with the trailing slash and folder appearance', () => {
@@ -436,6 +460,17 @@ describe('insertFileReference', () => {
     expect(chips[0]!.reference.appearance).toBe('folder')
   })
 
+  it('STACKS: the second chip targets the detect end, not the inflated clipboard end', () => {
+    const { chips, ctx } = harness()
+    // Chip A: long absolute path (18 chars), clipboard len 18 → detect end stays 0.
+    insertFileReference(ctx, scope, 'E:\\proj\\readme.md')
+    // Chip B: clipboard draft grew by 18, but detect end only grew by 1 (U+FFFC).
+    // The span must be at detect 1, NOT clipboard draft.length (19).
+    insertFileReference(ctx, scope, 'E:\\proj\\src\\index.ts')
+    expect(chips).toHaveLength(2)
+    expect(chips[1]!.span).toEqual({ start: 1, end: 1, draftRev: 2 })
+  })
+
   it('no-ops when the conversation service is missing', () => {
     let emitted = false
     const ctx: ClientRuntimeContext = {
@@ -444,5 +479,26 @@ describe('insertFileReference', () => {
     }
     insertFileReference(ctx, scope, 'E:\\proj\\readme.md')
     expect(emitted).toBe(false)
+  })
+})
+
+describe('detectEnd (detect-coordinate span fix)', () => {
+  it('equals the clipboard length when there are no chips', () => {
+    expect(detectEnd('hello @world', [])).toBe('hello @world'.length)
+  })
+
+  it('shrinks the end by (clipLen - 1) for each existing chip occurrence', () => {
+    // Two chips, each a 1-char U+FFFC in detect space but long in clipboard.
+    const draft = 'C:\\proj\\a.tsC:\\proj\\b.ts'
+    const occurrences = [
+      { offset: 0, length: 12 }, // a.ts
+      { offset: 12, length: 12 }, // b.ts
+    ]
+    // clipboard len 24; detect = 24 - (11 + 11) = 2 (two U+FFFC).
+    expect(detectEnd(draft, occurrences)).toBe(2)
+  })
+
+  it('never returns a negative end', () => {
+    expect(detectEnd('', [{ offset: 0, length: 5 }])).toBe(0)
   })
 })
