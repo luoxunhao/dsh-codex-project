@@ -2,9 +2,10 @@
  * 项目文件夹 tab + 文件预览 tab tests. Project resolution drives the tree's
  * empty/single-root state, root rows (main + shared + missing), lazy per-dir
  * listing on expand, opening a file into its own preview tab (openPreview), the
- * @-reference button, the right-click "用文件管理器打开", and error surfacing.
- * A separate block covers the FilePreviewTab, which renders the preview for the
- * tab's `path` through the plugin's own /codex-project API.
+ * right-click 引用到对话 (file / directory) menu action, the directory/file
+ * context-menu contents, and error surfacing. A separate block covers the
+ * FilePreviewTab, which renders the preview for the tab's `path` through the
+ * plugin's own /codex-project API.
  */
 
 // @vitest-environment jsdom
@@ -140,6 +141,16 @@ function rowByText(tab: HTMLElement, text: string): HTMLElement {
     .find(candidate => candidate.textContent?.includes(text))
   expect(row, `row containing "${text}"`).toBeDefined()
   return row!
+}
+
+/** Click an open context-menu item by its label text (the menu is portaled to body). */
+async function clickMenu(label: string): Promise<void> {
+  const item = Array.from(document.querySelectorAll<HTMLElement>('[role="menuitem"], [role="menu"] button'))
+    .find(candidate => candidate.textContent?.trim() === label)
+  expect(item, `menu item "${label}"`).toBeDefined()
+  await act(async () => {
+    item!.click()
+  })
 }
 
 describe('ProjectTab', () => {
@@ -303,7 +314,7 @@ describe('ProjectTab', () => {
     expect(opened).toEqual([`${ROOT_A}\\readme.md`])
   })
 
-  it('references a file in chat via the hover @ button', async () => {
+  it('references a file in chat via the right-click 引用到对话 menu item', async () => {
     const listing: ProjectListing = {
       path: ROOT_A,
       entries: [
@@ -318,29 +329,51 @@ describe('ProjectTab', () => {
       rowByText(tab, 'proj (主)').click()
     })
     await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)) })
-    const fileRow = rowByText(tab, 'readme.md')
-    const refButton = fileRow.querySelector<HTMLElement>('.dsh-cxp-row-ref')
-    expect(refButton).toBeDefined()
     await act(async () => {
-      refButton!.click()
+      rowByText(tab, 'readme.md').dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }))
     })
+    // The hover-@ button is gone; the row carries no trailing @ affordance.
+    expect(rowByText(tab, 'readme.md').querySelector('.dsh-cxp-row-ref')).toBeNull()
+    await clickMenu('引用到对话')
     expect(runtime.chips).toEqual([{ ref: `${ROOT_A}\\readme.md`, label: 'readme.md' }])
   })
 
-  it('directory context menu: 用文件管理器打开 + 上传到此处, no 下载/添加到对话', async () => {
+  it('references a directory via the right-click 引用到对话 menu item', async () => {
+    const listing: ProjectListing = {
+      path: ROOT_A,
+      entries: [
+        { name: 'src', path: `${ROOT_A}\\src`, isDir: true, hidden: false, isSymlink: false, broken: false },
+      ],
+      truncated: false,
+    }
+    const fake = fakeApi(PROJECT, { [ROOT_A]: listing })
+    const runtime = fakeCtx()
+    const { tab } = await renderTab(fake.api, runtime.ctx)
+    await act(async () => {
+      rowByText(tab, 'proj (主)').click()
+    })
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)) })
+    await act(async () => {
+      rowByText(tab, 'src').dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }))
+    })
+    await clickMenu('引用到对话')
+    expect(runtime.chips).toEqual([{ ref: `E:/proj/src/`, label: 'src/' }])
+  })
+
+  it('directory context menu: 引用到对话 + 用文件管理器打开 + 上传到此处, no 下载', async () => {
     const fake = fakeApi(PROJECT)
     const { tab } = await renderTab(fake.api, fakeCtx().ctx)
     await act(async () => {
       rowByText(tab, 'proj (主)').dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }))
     })
     const text = tab.ownerDocument.body.textContent ?? ''
+    expect(text).toContain('引用到对话')
     expect(text).toContain('用文件管理器打开')
     expect(text).toContain('上传到此处')
     expect(text).not.toContain('下载')
-    expect(text).not.toContain('添加到对话')
   })
 
-  it('file context menu: 下载 present, no 上传到此处/添加到对话', async () => {
+  it('file context menu: 引用到对话 + 下载 present, no 上传到此处', async () => {
     const listing: ProjectListing = {
       path: ROOT_A,
       entries: [
@@ -358,9 +391,9 @@ describe('ProjectTab', () => {
       rowByText(tab, 'readme.md').dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }))
     })
     const text = tab.ownerDocument.body.textContent ?? ''
+    expect(text).toContain('引用到对话')
     expect(text).toContain('下载')
     expect(text).not.toContain('上传到此处')
-    expect(text).not.toContain('添加到对话')
   })
 
   it('surfaces a project-fetch error instead of crashing', async () => {

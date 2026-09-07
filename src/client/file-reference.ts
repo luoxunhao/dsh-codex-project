@@ -441,12 +441,34 @@ export function createFileReferenceSource(
 }
 
 /**
- * Inject one file/directory reference chip into the session composer draft.
- * The chip is appended at the current draft end; its label is the name and its
- * absolute path travels as `ref`. Directories keep the trailing slash the
- * harness prompt reads as "list it when its contents matter". Degrades to a
- * logged no-op when the conversation service, session scope, or input shell is
- * unavailable.
+ * The composer's TRUE detect end: the offset (in DETECT coordinates) at which a
+ * new reference chip should be appended. The composer's `slash/input-insert-reference`
+ * span is expressed in detect coordinates, where each existing chip counts as one
+ * U+FFFC — but the public InputState exposes only the CLIPBOARD draft, where a chip
+ * expands to its (long) clipboard text. Plain text/gaps/newlines count 1:1 in both
+ * planes, so the detect end is exactly the clipboard length minus one per extra
+ * char each chip contributes (`occ.length − 1`). Computing this fresh before EVERY
+ * insert lets multiple genuine chips stack (see insertFileReference).
+ * @param draft - the clipboard draft text (`state.draft`).
+ * @param occurrences - the chip occurrences in clipboard coordinates (`state.occurrences`).
+ * @returns the detect length (== the correct collapsed insert offset for a new chip).
+ */
+export function detectEnd(draft: string, occurrences: readonly { offset: number; length: number }[]): number {
+  let over = 0
+  for (const occurrence of occurrences) over += Math.max(0, occurrence.length - 1)
+  return Math.max(0, draft.length - over)
+}
+
+/**
+ * Inject one file/directory reference chip into the session composer draft as a
+ * GENUINE dsh reference chip (the same chip the native `@` picker makes). Each
+ * call appends ONE chip at the composer's current DETECT end; re-reading the
+ * input state fresh every call lets several references stack into one composer
+ * (each chip keeps its own address, exactly like N user-typed `@` tokens).
+ *
+ * Directories carry the trailing slash the harness prompt reads as "list it when
+ * its contents matter". Degrades to a logged no-op when the conversation service,
+ * session scope, or input shell is unavailable.
  * @param ctx - the client runtime context.
  * @param scope - the target session.
  * @param path - absolute path of the referenced file or directory.
@@ -466,11 +488,10 @@ export function insertFileReference(
     const input = conversation.input?.for(actx)
     if (input === undefined) return
     const state = input.state.getSnapshot()
-    const span: FileReferenceSpan = {
-      start: state.draft.length,
-      end: state.draft.length,
-      draftRev: state.draftRev,
-    }
+    // The insert span is in DETECT coordinates: the true end, not the clipboard
+    // length (which a prior chip inflates). Stale draftRev makes the CAS fail.
+    const end = detectEnd(state.draft, state.occurrences ?? [])
+    const span: FileReferenceSpan = { start: end, end, draftRev: state.draftRev }
     const isDirectory = options.isDirectory === true
     const reference: FileReferenceInsert = {
       source: FILE_REF_SOURCE,

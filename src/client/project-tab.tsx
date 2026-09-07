@@ -21,10 +21,11 @@
  * mirror better-sidebar's explorer metrics via the shared `--dsw-*` tokens.
  *
  * Row interactions: expand/collapse a directory; open a file in the preview
- * tab; right-click a row for a context menu — a file offers 下载, a directory
- * offers 用文件管理器打开 / 上传到此处 (upload files into that folder), and every
- * row can copy its relative / absolute path; hovering a row reveals the
- * @-reference button.
+ * tab; right-click a row for a context menu — 引用到对话 (file or directory),
+ * a file offers 下载, a directory offers 用文件管理器打开 / 上传到此处 (upload files
+ * into that folder), and every row can copy its relative / absolute path. The
+ * old hover-revealed `@` button was removed — referencing lives in the context
+ * menu now.
  * @module dsh-codex-project/client/project-tab
  */
 
@@ -224,23 +225,12 @@ export function ProjectTab(props: ProjectTabProps): ReactNode {
     insertFileReference(ctx, scope, path, { isDirectory })
   }, [ctx, scope])
 
-  /** The hover-revealed @-reference button (or the transient "已复制" label). */
-  const rowAction = (path: string, isDirectory = false): ReactNode => {
-    if (copiedPath === path) return <span className="dsh-cxp-row-copied">已复制</span>
-    return (
-      <button
-        type="button"
-        className="dsh-cxp-row-ref"
-        aria-label="在对话中引用"
-        title="在对话中引用"
-        onClick={(event) => {
-          event.stopPropagation()
-          reference(path, isDirectory)
-        }}
-      >
-        @
-      </button>
-    )
+  /** The row's trailing feedback: a transient "已复制" label right after a copy
+   *  (the old hover-revealed `@` button is removed — referencing now lives in the
+   *  row's right-click menu, see {@link reference}). */
+  const rowAction = (path: string): ReactNode => {
+    if (copiedPath !== path) return null
+    return <span className="dsh-cxp-row-copied">已复制</span>
   }
 
   const openRowMenu = (event: MouseEvent, path: string, isFile: boolean): void => {
@@ -379,6 +369,9 @@ export function ProjectTab(props: ProjectTabProps): ReactNode {
         open={rowMenu !== null}
         onClose={() => { setRowMenu(null) }}
         items={[
+          // Reference the row's file/dir into the conversation (the right-click
+          // replacement for the old hover-@ button).
+          { id: 'reference', label: '引用到对话', icon: <AtGlyph size={14} /> },
           // Files: download; directories: upload into this folder (better-sidebar
           // semantics). Both always offer copy + the folder opener for dirs.
           ...(rowMenu !== null && !rowMenu.isFile
@@ -397,6 +390,7 @@ export function ProjectTab(props: ProjectTabProps): ReactNode {
           const target = rowMenu
           if (target === null) return
           setRowMenu(null)
+          if (id === 'reference') { reference(target.path, !target.isFile); return }
           if (id === 'open-dir') { openDir(target.path); return }
           if (id === 'download') { downloadFile(target.path); return }
           if (id === 'upload-here') { openUploadPicker(target.path); return }
@@ -436,7 +430,7 @@ function DirNode(props: {
   refreshTick: number
   onOpenFile: (path: string) => void
   onOpenDir: (path: string) => void
-  rowAction: (path: string, isDirectory?: boolean) => ReactNode
+  rowAction: (path: string) => ReactNode
   openRowMenu: (event: MouseEvent, path: string, isFile: boolean) => void
 }): ReactNode {
   const {
@@ -491,7 +485,7 @@ function DirNode(props: {
       >
         <span className="dsh-cxp-tree-icon">{expanded ? <IconFolderOpen16 size={14} /> : <IconFolderClose16 size={14} />}</span>
         <span className="dsh-cxp-tree-name">{name}</span>
-        {rowAction(path, true)}
+        {rowAction(path)}
       </div>
       {expanded && (
         <div>
@@ -544,6 +538,22 @@ function UploadArrowIcon({ size = 16, className }: { size?: number; className?: 
   )
 }
 
+/** An `@`-at glyph for the 引用到对话 menu row. */
+function AtGlyph({ size = 14 }: { size?: number }): ReactNode {
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      <path
+        d="M8 2a6 6 0 1 0 0 12v-1.5A4.5 4.5 0 0 1 8 3.5 4.5 4.5 0 0 1 12.5 8v1.75a1.75 1.75 0 0 0 3.5 0V8A8 8 0 0 0 8 0a8 8 0 0 0 0 16v-2"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.3"
+        strokeLinecap="round"
+      />
+      <circle cx="8" cy="8" r="2.2" fill="none" stroke="currentColor" strokeWidth="1.3" />
+    </svg>
+  )
+}
+
 /** A compact document/file glyph (mirrors better-sidebar's VscFile). The dsh
  *  code icon (`IconCodeOutline16`) is a `#`-shaped hashtag, so file rows used
  *  it directly would each show a `#`; a proper file icon is drawn inline here. */
@@ -561,7 +571,7 @@ function FileRow(props: {
   entry: ProjectEntry
   depth: number
   onOpenFile: (path: string) => void
-  rowAction: (path: string, isDirectory?: boolean) => ReactNode
+  rowAction: (path: string) => ReactNode
   openRowMenu: (event: MouseEvent, path: string, isFile: boolean) => void
 }): ReactNode {
   const { entry, depth, onOpenFile, rowAction, openRowMenu } = props
