@@ -21,7 +21,8 @@
  */
 
 import { spawnSync } from 'node:child_process'
-import { existsSync, mkdtempSync, mkdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, mkdirSync, realpathSync, rmSync } from 'node:fs'
+import { DatabaseSync } from 'node:sqlite'
 import { createRequire } from 'node:module'
 import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -91,10 +92,10 @@ try {
   }
 
   // --- B. additional dirs ------------------------------------------------
-  const spacesPath = join(base, 'dirs.json')
-  const spacesEnv = { ...process.env, DSH_CODEX_PROJECT_CONFIG: spacesPath }
+  const dbPath = join(base, 'dirs.db')
+  const spacesEnv = { ...process.env, DSH_CODEX_PROJECT_CONFIG: dbPath }
   {
-    writeDirs(spacesPath, { w1: { path: wsA, dirs: [wsB] } })
+    writeDirs(dbPath, { w1: { path: wsA, dirs: [wsB] } })
     const result = runWrapper(spacesEnv, bwrapArgs('workspace-write', wsA, [process.execPath, '-e', PROBE], [wsA, wsB, outside]))
     const lines = probeLines(result.stdout)
     check('B status 0', result.status === 0, `status=${result.status} stderr=${result.stderr}`)
@@ -151,7 +152,7 @@ try {
     // An added dir that vanished NARROWS to the surviving roots: the
     // workspace path stays writable under the workspace SID, the dead dir is
     // naturally denied (the token never grants a dead directory).
-    writeDirs(spacesPath, { w1: { path: wsA, dirs: [join(base, 'missing')] } })
+    writeDirs(dbPath, { w1: { path: wsA, dirs: [join(base, 'missing')] } })
     const missingRoot = runWrapper(spacesEnv, bwrapArgs('workspace-write', wsA, [process.execPath, '-e', PROBE], [wsA, join(base, 'missing'), outside]))
     const lines = probeLines(missingRoot.stdout)
     check('E missing dir status 0', missingRoot.status === 0, `status=${missingRoot.status} stderr=${missingRoot.stderr}`)
@@ -162,7 +163,7 @@ try {
 
   // --- F. exit-code mirror (workspace branch) ----------------------------
   {
-    writeDirs(spacesPath, { w1: { path: wsA, dirs: [wsB] } })
+    writeDirs(dbPath, { w1: { path: wsA, dirs: [wsB] } })
     const result = runWrapper(spacesEnv, bwrapArgs('workspace-write', wsA, [process.execPath, '-e', EXIT_PROBE], []))
     check('F exit code mirrored', result.status === 42, `status=${result.status}`)
   }
@@ -170,8 +171,27 @@ try {
   rmSync(base, { recursive: true, force: true })
 }
 
+/** Seed the dirs DB (same schema the plugin's dirs-config owns) at `path`. */
 function writeDirs(path, workspaces) {
-  writeFileSync(path, JSON.stringify({ workspaces }, null, 2))
+  const db = new DatabaseSync(path)
+  db.exec(
+    'CREATE TABLE IF NOT EXISTS workspaces (workspace_id TEXT PRIMARY KEY, path TEXT NOT NULL, dirs_json TEXT NOT NULL) STRICT',
+  )
+  const replace = db.prepare('DELETE FROM workspaces')
+  const insert = db.prepare('INSERT INTO workspaces (workspace_id, path, dirs_json) VALUES (?, ?, ?)')
+  db.exec('BEGIN')
+  try {
+    replace.run()
+    for (const [id, record] of Object.entries(workspaces)) {
+      insert.run(id, record.path, JSON.stringify(record.dirs))
+    }
+    db.exec('COMMIT')
+  } catch (error) {
+    db.exec('ROLLBACK')
+    db.close()
+    throw error
+  }
+  db.close()
 }
 
 console.log(failures === 0 ? 'proto-verify: ALL PASS' : `proto-verify: ${failures} FAILURE(S)`)

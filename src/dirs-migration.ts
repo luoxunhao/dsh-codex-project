@@ -10,10 +10,10 @@
  *     workspace matching one of its roots; if none matches it is dropped
  *     with a warn (its data cannot be attributed).
  *
- * The migration writes the NEW file (at `$DSH_CODEX_PROJECT_CONFIG` /
- * `~/.dsh-codex-project/dirs.json`) and leaves the old
+ * The migration writes into the SQLite store (at `$DSH_CODEX_PROJECT_CONFIG` /
+ * `~/.dsh-codex-project/dirs.db`) and leaves the old
  * `~/.dsh-codex-project/spaces.json` untouched as a backup. It is
- * idempotent: once the new file exists, it never rewrites.
+ * idempotent: once the store holds any record, it never rewrites.
  * @module dsh-codex-project/dirs-migration
  */
 

@@ -31,7 +31,7 @@ Codex 处理项目时，一个"项目"往往横跨多个目录：主代码库、
 | 多根沙箱 runner | 命中配置的会话，shell/subprocess 自动走多根受限令牌（`lib/runner.js`） |
 | 多根 fs fence | 进程内 fs 工具（read/write/edit）同样按配置可写根放行（`lib/fs.js`） |
 | 会话上下文提醒 | 第一条 user 消息后折叠 `<system-reminder>` 目录清单（注明附加目录与主目录权限一致） |
-| 配置 CRUD + 持久化 | `/codex-project/api` JSON 路由，`~/.dsh-codex-project/dirs.json` |
+| 配置 CRUD + 持久化 | `/codex-project/api` JSON 路由，SQLite 存于 `~/.dsh-codex-project/dirs.db` |
 | `add_dir` 模型工具 | 模型可通过工具请求添加目录（用户确认后生效）——工具名下划线，与 dsh 模型工具命名一致 |
 | `/adddir` 指令 | 人类在 composer 输入 `/adddir` → 弹系统目录选择框，把选中目录加入当前会话工作区（对应模型工具 `add_dir`） |
 
@@ -100,7 +100,7 @@ ctx.tools.register(defineAddDirTool(deps))
 ```
 模型调用 add_dir(path)
   → 插件通过 ctx.approval.request() 请求用户确认
-  → 用户批准 → 写入 dirs.json
+  → 用户批准 → 写入 SQLite（`dirs.db`）
   → 目录立即进入可写集合（无状态重校验）
 ```
 
@@ -111,7 +111,7 @@ ctx.tools.register(defineAddDirTool(deps))
 ```
 用户输入 /adddir
   → 宿主弹原生目录选择框
-  → 选中目录 → 写入当前会话工作区的 dirs.json
+  → 选中目录 → 写入当前会话工作区的 SQLite（`dirs.db`）
   → 目录立即进入可写集合
 ```
 
@@ -169,7 +169,7 @@ fs fence 按可写根集合放行/拒绝（与 runner 共用同一命中判定�
 
 ## 配置文件
 
-默认 `~/.dsh-codex-project/dirs.json`（环境变量 `DSH_CODEX_PROJECT_CONFIG` 可覆盖），形状：
+默认存于 SQLite `~/.dsh-codex-project/dirs.db`（环境变量 `DSH_CODEX_PROJECT_CONFIG` 可覆盖），由 Node 内置 `node:sqlite` 驱动——无需额外原生依赖，写操作为单事务整表替换，不依赖「临时文件 + rename」原子写（后者在 Windows 目标被占用/查杀时会报 `EPERM`）。一张 `workspaces` 表，一行一个工作区，逻辑模型：
 
 ```json
 {
@@ -183,8 +183,8 @@ fs fence 按可写根集合放行/拒绝（与 runner 共用同一命中判定�
 ```
 
 - `path` 恒为该工作区自己的主根（锚定，记录键即工作区 id）；`dirs` 为额外可写目录；
-- 缺省文件 = 无配置 = 纯透传；
-- **失效根不自动清理**：目录消失不会改写配置文件（对齐 DSH 核心"被动失效保留记录、降级显示"策略）；通过「管理工作区」弹窗或 API 显式移除。
+- 缺省/空库 = 无配置 = 纯透传；
+- **失效根不自动清理**：目录消失不会改写配置（对齐 DSH 核心"被动失效保留记录、降级显示"策略）；通过「管理工作区」弹窗或 API 显式移除。
 
 ## HTTP API
 

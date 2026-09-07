@@ -1,6 +1,6 @@
 /**
  * dsh-codex-project host half: the add-dir plugin. The persisted model is a
- * workspace → additional-writable-dirs map (`~/.dsh-codex-project/dirs.json`
+ * workspace → additional-writable-dirs map (`~/.dsh-codex-project/dirs.db`
  * or `$DSH_CODEX_PROJECT_CONFIG`); sessions of a workspace that owns at
  * least one extra dir confine through the multi-root runner (workspace-level
  * SID granted on path + dirs under workspace-write), the model can add dirs
