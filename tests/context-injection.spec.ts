@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -14,6 +14,7 @@ import {
   PLUGIN_NAME,
 } from '../src/context-injection.ts'
 import type { WorkspaceDirs } from '../src/dirs-config.ts'
+import { seedDirs } from './helpers/dirs-test-db.ts'
 
 /**
  * A minimal fake session surface mirroring the real dsh `Session` shape:
@@ -63,7 +64,7 @@ const configPath = join(dir, 'dirs.json')
 const record = (path: string, dirs: string[]): WorkspaceDirs => ({ path, dirs })
 
 function writeConfig(workspaces: Record<string, WorkspaceDirs>) {
-  writeFileSync(configPath, JSON.stringify({ workspaces }), 'utf8')
+  seedDirs(configPath, workspaces)
 }
 
 beforeEach(() => {

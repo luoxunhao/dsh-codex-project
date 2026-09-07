@@ -15,6 +15,7 @@ import { loadWorkspaceDirs } from '../src/dirs-config.ts'
 import { DirsStore } from '../src/dirs-store.ts'
 import type { WorkspaceRegistryFace } from '../src/dirs-store.ts'
 import { dirsApi } from '../src/dirs-api.ts'
+import { clearDirs } from './helpers/dirs-test-db.ts'
 
 describe('dirs API', () => {
   const base = mkdtempSync(join(tmpdir(), 'dsh-crud-'))
@@ -40,7 +41,7 @@ describe('dirs API', () => {
   afterEach(() => {
     if (previousConfig === undefined) delete process.env.DSH_CODEX_PROJECT_CONFIG
     else process.env.DSH_CODEX_PROJECT_CONFIG = previousConfig
-    rmSync(configPath, { force: true })
+    clearDirs(configPath)
   })
 
   afterAll(() => {
@@ -165,7 +166,7 @@ describe('project folder API (/project and /list)', () => {
   afterEach(() => {
     if (previousConfig === undefined) delete process.env.DSH_CODEX_PROJECT_CONFIG
     else process.env.DSH_CODEX_PROJECT_CONFIG = previousConfig
-    rmSync(configPath, { force: true })
+    clearDirs(configPath)
   })
 
   afterAll(() => {
@@ -273,7 +274,7 @@ describe('project file API (/read, /write, /file)', () => {
   afterEach(() => {
     if (previousConfig === undefined) delete process.env.DSH_CODEX_PROJECT_CONFIG
     else process.env.DSH_CODEX_PROJECT_CONFIG = previousConfig
-    rmSync(configPath, { force: true })
+    clearDirs(configPath)
   })
 
   afterAll(() => {

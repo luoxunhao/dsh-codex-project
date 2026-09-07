@@ -13,6 +13,7 @@ import { afterAll, afterEach, describe, expect, it } from 'vitest'
 import { DirsStore } from '../src/dirs-store.ts'
 import type { WorkspaceRegistryFace } from '../src/dirs-store.ts'
 import { dirsApi } from '../src/dirs-api.ts'
+import { clearDirs } from './helpers/dirs-test-db.ts'
 
 const enc = encodeURIComponent
 
@@ -40,7 +41,7 @@ describe('project search + upload routes', () => {
   afterEach(() => {
     if (previousConfig === undefined) delete process.env.DSH_CODEX_PROJECT_CONFIG
     else process.env.DSH_CODEX_PROJECT_CONFIG = previousConfig
-    rmSync(configPath, { force: true })
+    clearDirs(configPath)
   })
 
   afterAll(() => {

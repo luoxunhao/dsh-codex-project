@@ -5,7 +5,7 @@
  * workspaces outside every record keep the core single-root semantics.
  */
 
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, rmSync } from 'node:fs'
 import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -14,6 +14,7 @@ import type { SandboxExecutionPolicy } from '@deepseek-ai/dsh-sandbox'
 import { afterAll, afterEach, describe, expect, it } from 'vitest'
 
 import { CodexProjectFileSystem } from '../src/fs.ts'
+import { clearDirs, seedDirs } from './helpers/dirs-test-db.ts'
 
 describe('CodexProjectFileSystem', () => {
   // Under the user's home, NOT under the temp area: the core writable-root
@@ -25,7 +26,7 @@ describe('CodexProjectFileSystem', () => {
   const extraB = join(base, 'extra-b')
   const outside = join(base, 'outside')
   for (const dir of [workspace, extraA, extraB, outside]) mkdirSync(dir)
-  const configPath = join(base, 'dirs.json')
+  const configPath = join(base, 'dirs.db')
   const previousConfig = process.env.DSH_CODEX_PROJECT_CONFIG
   // Direct construction bypasses the loader's schemastery defaults, so the
   // resolved config must be complete (as the loader would pass it), and the
@@ -42,8 +43,7 @@ describe('CodexProjectFileSystem', () => {
   }
 
   function writeConfig(workspaces: Record<string, { path: string; dirs: string[] }>): void {
-    writeFileSync(configPath, JSON.stringify({ workspaces }), 'utf8')
-    process.env.DSH_CODEX_PROJECT_CONFIG = configPath
+    seedDirs(configPath, workspaces)
   }
 
   async function write(path: string, mode: 'read-only' | 'workspace-write' | 'danger-full-access' = 'workspace-write'): Promise<{ ok: boolean; code?: string }> {
@@ -62,6 +62,7 @@ describe('CodexProjectFileSystem', () => {
   })
 
   afterAll(() => {
+    clearDirs(configPath)
     rmSync(base, { recursive: true, force: true })
   })
 

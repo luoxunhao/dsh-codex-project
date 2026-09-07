@@ -15,6 +15,7 @@ import type { ConfinedArgv, SandboxPolicy, SandboxProvider } from '@deepseek-ai/
 import { afterAll, afterEach, describe, expect, it } from 'vitest'
 
 import { wrapSandboxConfine } from '../src/seam.ts'
+import { clearDirs, seedDirs } from './helpers/dirs-test-db.ts'
 
 const isWin = process.platform === 'win32'
 
@@ -48,7 +49,7 @@ describe('wrapSandboxConfine', () => {
   const wsB = join(base, 'ws-b')
   const outside = join(base, 'outside')
   for (const dir of [wsA, wsB, outside]) mkdirSync(dir)
-  const configPath = join(base, 'dirs.json')
+  const configPath = join(base, 'dirs.db')
   const runnerPath = join(base, 'lib', 'runner.js')
   mkdirSync(join(base, 'lib'), { recursive: true })
   writeFileSync(runnerPath, '')
@@ -60,8 +61,7 @@ describe('wrapSandboxConfine', () => {
   })
 
   function writeDirs(workspaces: Record<string, { path: string; dirs: string[] }>): void {
-    writeFileSync(configPath, JSON.stringify({ workspaces }, null, 2))
-    process.env.DSH_CODEX_PROJECT_CONFIG = configPath
+    seedDirs(configPath, workspaces)
   }
 
   it.runIf(isWin)('routes a workspace-write call inside a recorded workspace through the runner', () => {
@@ -179,7 +179,7 @@ describe('wrapSandboxConfine', () => {
   })
 
   it('keeps pass-through behavior when no records are configured', () => {
-    delete process.env.DSH_CODEX_PROJECT_CONFIG
+    seedDirs(configPath, {})
     const { provider, calls } = fakeSandbox()
     const dispose = wrapSandboxConfine(provider, runnerPath)
     const result = provider.confine(['true'], policy(wsA))
@@ -189,6 +189,7 @@ describe('wrapSandboxConfine', () => {
   })
 
   afterAll(() => {
+    clearDirs(configPath)
     rmSync(base, { recursive: true, force: true })
   })
 })

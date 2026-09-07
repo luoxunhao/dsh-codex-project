@@ -13,6 +13,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
 import { defineAdddirCommand, type AdddirCommandDeps, type AdddirCommandResult } from '../src/adddir-command.ts'
 import { DirsStore } from '../src/dirs-store.ts'
+import { clearDirs } from './helpers/dirs-test-db.ts'
 
 const base = mkdtempSync(join(tmpdir(), 'dsh-adddir-cmd-'))
 const workspacePath = join(base, 'ws')
@@ -58,7 +59,7 @@ describe('/adddir command', () => {
   afterEach(() => {
     if (previousConfig === undefined) delete process.env.DSH_CODEX_PROJECT_CONFIG
     else process.env.DSH_CODEX_PROJECT_CONFIG = previousConfig
-    rmSync(configPath, { force: true })
+    clearDirs(configPath)
   })
 
   it('registers under the name adddir', () => {

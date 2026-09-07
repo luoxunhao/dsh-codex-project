@@ -1,6 +1,7 @@
 # Standalone plugin workspace. deny-by-default build scripts: koffi is the
 # native FFI layer of @deepseek-ai/dsh-sandbox-windows-acl (Win32 token/ACL
-# APIs) and genuinely needs its install script.
+# APIs) and genuinely needs its install script. The dirs config uses the
+# built-in `node:sqlite` module, so no extra native package needs building.
 allowBuilds:
   koffi: true
 minimumReleaseAgeExclude:

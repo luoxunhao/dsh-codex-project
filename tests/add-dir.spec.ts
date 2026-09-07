@@ -14,6 +14,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { AddDirToolDeps } from '../src/add-dir.ts'
 import { defineAddDirTool } from '../src/add-dir.ts'
 import { DirsStore } from '../src/dirs-store.ts'
+import { clearDirs } from './helpers/dirs-test-db.ts'
 
 const base = mkdtempSync(join(tmpdir(), 'dsh-adddir-'))
 const workspacePath = join(base, 'ws')
@@ -31,7 +32,7 @@ beforeEach(() => {
 afterEach(() => {
   if (previousConfig === undefined) delete process.env.DSH_CODEX_PROJECT_CONFIG
   else process.env.DSH_CODEX_PROJECT_CONFIG = previousConfig
-  rmSync(configPath, { force: true })
+  clearDirs(configPath)
 })
 
 function makeDeps(requestApproval: (path: string) => Promise<ApprovalOutcome>): {
@@ -83,7 +84,7 @@ describe('add_dir tool', () => {
       const result = await run(deps, dirA)
       expect(result).toMatchObject({ ok: false, reason: `approval ${outcome}` })
       expect(await store.load()).toMatchObject({ w1: { path: workspacePath, dirs: [] } })
-      rmSync(configPath, { force: true })
+      clearDirs(configPath)
     }
   })
 

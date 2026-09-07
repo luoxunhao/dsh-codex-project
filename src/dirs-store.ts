@@ -1,19 +1,19 @@
 /**
- * dsh-codex-project configuration store: the read-modify-write layer over
- * the dirs data file (`$DSH_CODEX_PROJECT_CONFIG` or
- * `~/.dsh-codex-project/dirs.json`, shared with `src/dirs-config.ts`).
- * Writes are atomic (temp file + rename) and serialized through a promise
- * queue so interleaved requests cannot lose updates; reads go straight to
- * the shared loader. Every mutation validates that each directory exists
- * (a saved dir must be runnable; a dir vanishing later merely narrows the
- * grant at confinement time).
+ * dsh-codex-project configuration store: the read-modify-write layer over the
+ * SQLite dirs database (`$DSH_CODEX_PROJECT_CONFIG` or
+ * `~/.dsh-codex-project/dirs.db`, owned by `src/dirs-config.ts`). Writes
+ * replace the whole record set inside one SQLite transaction (no temp file +
+ * rename, so the Windows EPERM that plagued a JSON config never applies) and
+ * are serialized through a promise queue so interleaved requests cannot lose
+ * updates; reads go straight to the shared loader. Every mutation validates
+ * that each directory exists (a saved dir must be runnable; a dir vanishing
+ * later merely narrows the grant at confinement time).
  * @module dsh-codex-project/dirs-store
  */
 
-import { mkdirSync, realpathSync, renameSync, writeFileSync } from 'node:fs'
-import { dirname } from 'node:path'
+import { realpathSync } from 'node:fs'
 
-import { dirsConfigDirectory, dirsConfigPath, loadWorkspaceDirs } from './dirs-config.ts'
+import { loadWorkspaceDirs, writeWorkspaceDirs } from './dirs-config.ts'
 import type { WorkspaceDirs } from './dirs-config.ts'
 
 /** A mutation/query failure: invalid request, unknown workspace, or a fenced path. */
@@ -43,7 +43,7 @@ declare module '@deepseek-ai/cordis' {
   }
 }
 
-/** Serialize one mutation over the data file, atomically. */
+/** Serialize one mutation over the record set, atomically (SQLite transaction). */
 export class DirsStore {
   private queue: Promise<unknown> = Promise.resolve()
 
@@ -53,7 +53,7 @@ export class DirsStore {
     return run
   }
 
-  /** The configured records (shared loader; a malformed file fails loud). */
+  /** The configured records (shared loader; a malformed row fails loud). */
   async load(): Promise<Record<string, WorkspaceDirs>> {
     return loadWorkspaceDirs()
   }
@@ -72,7 +72,7 @@ export class DirsStore {
       const record = records[workspaceId]
       if (record === undefined) throw new DirsStoreError('not-found', `no workspace ${workspaceId}`)
       record.dirs = dedupeDirectionary(dirs)
-      persistWorkspaceDirs(records)
+      writeWorkspaceDirs(records)
       return { ...record }
     })
   }
@@ -96,7 +96,7 @@ export class DirsStore {
       }
       const record: WorkspaceDirs = { path, dirs: dedupeDirectionary(dirs) }
       records[workspaceId] = record
-      persistWorkspaceDirs(records)
+      writeWorkspaceDirs(records)
       return { ...record }
     })
   }
@@ -107,7 +107,7 @@ export class DirsStore {
       const records = loadWorkspaceDirs()
       if (!(workspaceId in records)) throw new DirsStoreError('not-found', `no workspace ${workspaceId}`)
       delete records[workspaceId]
-      persistWorkspaceDirs(records)
+      writeWorkspaceDirs(records)
     })
   }
 }
@@ -134,15 +134,11 @@ function trySignificantPath(path: string): string {
   }
 }
 
-/** Atomically persist the full record map (temp file + rename). */
+/**
+ * Persist the full record map. Retained under its original name because
+ * `dirs-migration.ts` imports it; the write is a single SQLite transaction.
+ * @param records - the full record map.
+ */
 export function persistWorkspaceDirs(records: Record<string, WorkspaceDirs>): void {
-  const path = dirsConfigPath()
-  mkdirSync(dirname(path), { recursive: true })
-  const tmp = `${path}.tmp-${process.pid}`
-  try {
-    writeFileSync(tmp, JSON.stringify({ workspaces: records }, null, 2), 'utf8')
-    renameSync(tmp, path)
-  } catch (error) {
-    throw new DirsStoreError('invalid', `cannot persist dirs: ${error instanceof Error ? error.message : String(error)}`)
-  }
+  writeWorkspaceDirs(records)
 }

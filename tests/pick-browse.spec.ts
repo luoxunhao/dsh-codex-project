@@ -15,6 +15,7 @@ import { normalizePickPath, pickLevel, pickRoots } from '../src/pick-browse.ts'
 import { DirsStore } from '../src/dirs-store.ts'
 import type { WorkspaceRegistryFace } from '../src/dirs-store.ts'
 import { dirsApi } from '../src/dirs-api.ts'
+import { clearDirs } from './helpers/dirs-test-db.ts'
 
 describe('pickRoots / pickLevel', () => {
   const base = mkdtempSync(join(tmpdir(), 'dsh-pick-'))
@@ -64,7 +65,7 @@ describe('pick routes', () => {
   afterEach(() => {
     if (previousConfig === undefined) delete process.env.DSH_CODEX_PROJECT_CONFIG
     else process.env.DSH_CODEX_PROJECT_CONFIG = previousConfig
-    rmSync(configPath, { force: true })
+    clearDirs(configPath)
   })
 
   afterAll(() => {
