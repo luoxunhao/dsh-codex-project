@@ -30,9 +30,10 @@ Codex 处理项目时，一个"项目"往往横跨多个目录：主代码库、
 | 「打开本地目录」 | 原生「…」菜单注入入口：用系统文件管理器打开该工作区文件夹（插件自有路由 spawn explorer.exe——不走 workspaces.openPath，避免被 better-sidebar 等插件劫持到侧边栏编辑器） |
 | 多根沙箱 runner | 命中配置的会话，shell/subprocess 自动走多根受限令牌（`lib/runner.js`） |
 | 多根 fs fence | 进程内 fs 工具（read/write/edit）同样按配置可写根放行（`lib/fs.js`） |
-| 会话上下文提醒 | 第一条 user 消息后折叠 `<system-reminder>` 目录清单（英文、零权限声明，模型自己试错） |
+| 会话上下文提醒 | 第一条 user 消息后折叠 `<system-reminder>` 目录清单（注明附加目录与主目录权限一致） |
 | 配置 CRUD + 持久化 | `/codex-project/api` JSON 路由，`~/.dsh-codex-project/dirs.json` |
-| add-dir 模型工具 | 模型可通过工具请求添加目录（用户确认后生效），无需手动操作 |
+| `add_dir` 模型工具 | 模型可通过工具请求添加目录（用户确认后生效）——工具名下划线，与 dsh 模型工具命名一致 |
+| `/adddir` 指令 | 人类在 composer 输入 `/adddir` → 弹系统目录选择框，把选中目录加入当前会话工作区（对应模型工具 `add_dir`） |
 
 ## 架构总览
 
@@ -51,11 +52,13 @@ Codex 处理项目时，一个"项目"往往横跨多个目录：主代码库、
 │                                                                       │
 │  ① ctx.webServer.register    ─── HTTP 路由（CRUD / 文件读写）         │
 │  ② ctx.on('agent/pre-step')  ─── 折叠 <system-reminder> 目录清单     │
-│  ③ ctx.tools.register        ─── add-dir 模型工具                    │
+│  ③ ctx.tools.register        ─── add_dir 模型工具                    │
 │  ④ sandbox.confine wrap      ─── 多根 runner（lib/runner.js）        │
 │                                                                       │
 │  ⑤ ctx.fs 提供者（bundle patch 替换核心 fs-sandbox）                  │
 │     └── lib/fs.js 多根 fence（与 ④ 共用命中判定）                    │
+│                                                                       │
+│  ⑥ ctx.commands.register     ─── /adddir 指令（原生目录选择器）      │
 │                                                                       │
 │  配置外 / 单根 / 无 cwd 的会话 → 四个钩子全部纯透传（零影响）         │
 └───────────────────────────────────────────────────────────────────────┘
@@ -84,21 +87,32 @@ ctx.on('agent/pre-step', async ({ agent, messages }, next) => {
 
 DSH 的 agent 循环是：**收消息 → pre-step 事件链 → 模型推理 → 工具执行 → 输出**。`agent/pre-step` 是推理前的最后一道关卡。
 
-插件在这里计算当前会话的共享目录清单，生成 `<system-reminder>` 消息插入模型上下文。提醒只在附加目录集合变化时重新折叠：新会话首次播种一次，add-dir / 管理弹窗改动目录后才在下一轮重新注入，目录未变时跨轮不重复叠加。提醒列出主目录与附加目录，并注明**附加目录与主目录权限一致**——它们处在同一个 workspace-write 边界下（插件在每个存活根上授予工作区级 SID，附加目录绝不超出主根权限），模型可统一对待。
+插件在这里计算当前会话的共享目录清单，生成 `<system-reminder>` 消息插入模型上下文。提醒只在附加目录集合变化时重新折叠：新会话首次播种一次，`add_dir` 工具 / `/adddir` 指令 / 管理弹窗改动目录后才在下一轮重新注入，目录未变时跨轮不重复叠加。提醒列出主目录与附加目录，并注明**附加目录与主目录权限一致**——它们处在同一个 workspace-write 边界下（插件在每个存活根上授予工作区级 SID，附加目录绝不超出主根权限），模型可统一对待。
 
-### 3. `ctx.tools.register()` — 注册 add-dir 工具
+### 3. `ctx.tools.register()` — 注册 add_dir 模型工具
 
 ```ts
 ctx.tools.register(defineAddDirTool(deps))
 ```
 
-注册后模型在推理时可以看到 `add-dir` 工具的 schema，并主动调用它添加新目录。执行流程：
+注册后模型在推理时可以看到 `add_dir` 工具的 schema，并主动调用它添加新目录。工具名下划线 `add_dir` 与 dsh 模型工具命名一致。执行流程：
 
 ```
-模型调用 add-dir(path)
+模型调用 add_dir(path)
   → 插件通过 ctx.approval.request() 请求用户确认
   → 用户批准 → 写入 dirs.json
   → 目录立即进入可写集合（无状态重校验）
+```
+
+#### `/adddir` 指令（用户侧）
+
+模型工具 `add_dir` 的**用户侧镜像**：在 composer 里输入 `/adddir` 并回车，会弹出一个系统原生目录选择框（宿主 `ctx.directoryPicker` 的 native 能力）。选中某文件夹后，它会直接加入**当前会话所属工作区**的附加可写目录——因为是用户主动明确选择，所以**不再弹确认框**。命令只在宿主组合了 native directory picker 时注册；未组合（如纯 browse/远程后端）时命令不注册，插件其余功能不受影响。
+
+```
+用户输入 /adddir
+  → 宿主弹原生目录选择框
+  → 选中目录 → 写入当前会话工作区的 dirs.json
+  → 目录立即进入可写集合
 ```
 
 ### 4. `sandbox.confine` 包装 — 劫持进程沙箱

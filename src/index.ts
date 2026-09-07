@@ -4,7 +4,7 @@
  * or `$DSH_CODEX_PROJECT_CONFIG`); sessions of a workspace that owns at
  * least one extra dir confine through the multi-root runner (workspace-level
  * SID granted on path + dirs under workspace-write), the model can add dirs
- * via the `add-dir` tool (user-confirmed through the core approval seam),
+ * via the `add_dir` tool (user-confirmed through the core approval seam),
  * and a `<system-reminder>` keeps the current directory list visible and
  * refreshed on changes. Everything outside a recorded workspace (or a record
  * with no dirs) keeps the core sandbox behavior bit-identical (see
@@ -31,6 +31,8 @@ import type { WorkspaceRegistryFace } from './dirs-store.ts'
 import { dirsApi } from './dirs-api.ts'
 import { defineAddDirTool } from './add-dir.ts'
 import type { AddDirToolDeps } from './add-dir.ts'
+import { defineAdddirCommand } from './adddir-command.ts'
+import type { CommandsServiceFace, DirectoryPickerServiceFace } from './adddir-command.ts'
 
 /** Plugin identity for cordis.yml rows. */
 export const name = '@luoxunhao/dsh-codex-project'
@@ -142,7 +144,7 @@ export function apply(ctx: Context): void {
     }
   })
 
-  // Register the add-dir model tool (user confirmation via the core
+  // Register the add_dir model tool (user confirmation via the core
   // approval seam — dialog and audit are dsh core, the plugin only asks).
   const deps: AddDirToolDeps = {
     resolveWorkspaceId: (cwd) => {
@@ -154,7 +156,7 @@ export function apply(ctx: Context): void {
     requestApproval: (agent: Agent, path: string, signal: AbortSignal): Promise<ApprovalOutcome> => {
       return ctx.approval.request({
         agent,
-        toolName: 'add-dir',
+        toolName: 'add_dir',
         reason: `add ${path} to this workspace's additional writable directories?`,
         signal,
       })
@@ -162,7 +164,24 @@ export function apply(ctx: Context): void {
     store,
   }
   const tool = defineAddDirTool(deps)
-  ctx.effect(() => ctx.tools.register(tool), 'dsh-codex-project: add-dir tool')
+  ctx.effect(() => ctx.tools.register(tool), 'dsh-codex-project: add_dir tool')
+
+  // Register the /adddir human command (the add_dir tool's operator-facing
+  // twin): opens a native picker and adds the chosen folder to the active
+  // session's workspace. Requires the dsh `commands` service and a native
+  // `directoryPicker`; when either is absent (unusual compositions), the
+  // command simply does not register — the model tool and GUI still work.
+  const commands = ctx.get('commands') as CommandsServiceFace | undefined
+  if (commands !== undefined) {
+    const adddir = defineAdddirCommand({
+      resolveWorkspaceId: deps.resolveWorkspaceId,
+      picker: () => ctx.get('directoryPicker') as DirectoryPickerServiceFace | undefined,
+      store,
+    })
+    ctx.effect(() => commands.register(adddir), 'dsh-codex-project: /adddir command')
+  } else {
+    ctx.logger.warn('dsh-codex-project: no commands service; /adddir command not registered')
+  }
 
   // Route sandbox confine through the multi-root runner for recorded workspaces.
   const sandbox = ctx.get('sandbox')
