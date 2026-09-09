@@ -6,7 +6,7 @@
     "declaration": true,
     "emitDeclarationOnly": true,
     "outDir": "lib/types",
-    "rootDir": "."
+    "rootDir": "src"
   },
   "include": ["src"]
 }
