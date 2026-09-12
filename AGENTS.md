@@ -20,12 +20,15 @@
 
 ```bash
 pnpm typecheck          # tsc --noEmit
-pnpm test               # vitest run（12 个文件）
+pnpm test               # vitest run（16 个文件 / 201 用例）
 pnpm build              # tsc(types) + tsdown（host ESM + client CJS + runner + fs）
 pnpm proto:verify       # 多根 runner 原型实证（Windows ACL，需先 build）
 ```
 
 - **产物**：`lib/index.js`（host）、`lib/runner.js`、`lib/fs.js`、`lib/client.js`（浏览器 bundle，CJS closure 工厂注册 id `dsh-codex-project`）。
+- **宿主基线**：`@deepseek-ai/dsh-*` peer 一律 `^0.1.5-rc.1`（验证基线 0.1.5-rc.2）；`@deepseek-ai/cordis` `^4.0.2`。**别写回 `^0.1.2-alpha.4`**——semver 普通范围不匹配预发布版本，会拒绝 0.1.5-rc.x。
+- **`dsh-client-ui-primitives` 不声明 `dependencies`**：其 bundle 裸 import `shiki` / `@shikijs/langs/*` / `anser` / `clsx` / `katex` / `mdast-util-*` / `micromark-*`。这组包**必须留在 devDependencies**（浏览器用例的 resolve 依赖它们），不得"清理"掉。
+- **`tsconfig.build.json` 的 `rootDir` 必须是 `src`**：设成 `.` 会让声明落到 `lib/types/src/*`，与 package.json 的 `types` 子路径错位，消费者拿不到类型。
 - **client 白名单**：`react`、`react/jsx-runtime`、`react-dom`、`react-dom/client`、`cordis`、`@deepseek-ai/dsh-client-ui-slots`、`@deepseek-ai/dsh-client-ui-primitives`。纯度门插件在 resolve 阶段拒绝任何其他 `@deepseek-ai/*` value import 与 node 内置。
 - 白名单改动（加新 `@deepseek-ai` 依赖前）务必确认它在 web shell 的 `PLATFORM_MODULES`（`packages/client/web/src/platform.ts`）共享表里，否则运行时解析失败。
 

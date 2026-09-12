@@ -206,7 +206,9 @@ fs fence 按可写根集合放行/拒绝（与 runner 共用同一命中判定�
 
 ## 安装
 
-**前置**：已装好 DSH（`dsh web` 能正常运行），Node.js ≥ 20、pnpm ≥ 10。
+**前置**：已装好 DSH（`dsh web` 能正常运行），Node.js ≥ 22.5、pnpm ≥ 10。
+
+本插件基线 **DSH 0.1.5-rc.1+**（已在 **0.1.5-rc.2** 上完成门禁验证）：peer 范围 `^0.1.5-rc.1`，运行时装 0.1.5-rc.2。**0.1.2-alpha.x 不再支持**——该线的宿主服务面已变，请升级 DSH 运行时。
 
 ```sh
 dsh plugin --profile web add @luoxunhao/dsh-codex-project
@@ -250,7 +252,7 @@ client 改动浏览器硬刷新即可；host 改动（路由、seam、fs、runne
 
 ```bash
 pnpm typecheck          # 类型检查（tsc --noEmit）
-pnpm test               # 单元测试（vitest，12 个文件）
+pnpm test               # 单元测试（vitest，16 个文件）
 pnpm build              # 构建 lib/（tsc types + tsdown：host ESM + client CJS + runner + fs）
 pnpm proto:verify       # 多根 runner 原型实证（Windows ACL，需先 build）
 ```
@@ -262,6 +264,21 @@ pnpm proto:verify       # 多根 runner 原型实证（Windows ACL，需先 buil
 - 「项目文件夹」tab 通过 `betterSidebar.registerTab` 接入（仅在 better-sidebar 安装时注册），client 侧用结构化再声明消费；
 - fence 只改一处：复用 `dirs-api.ts` 的 `fenceFor`，不要另写一份 roots 推导。
 
+## 宿主版本基线（0.1.5-rc.1+）
+
+| 项 | 值 |
+|---|---|
+| peer 范围 | `@deepseek-ai/dsh-*` 一律 `^0.1.5-rc.1`（`^0.1.5-rc.1` 天然容纳 rc.2，rc.1 用户无需升级插件） |
+| 验证基线 | **DSH 0.1.5-rc.2**（`pnpm typecheck` / `pnpm test` 201 用例 / `pnpm build` 全绿） |
+| `@deepseek-ai/cordis` | `^4.0.2`（与 DSH `vendor/cordis` 同版） |
+
+**两个必须知道的坑**（升级时踩过，别再踩）：
+
+1. **`^0.1.2-alpha.4` 会拒绝 `0.1.5-rc.1`**。semver 规定普通范围不匹配预发布版本——`semver.satisfies('0.1.5-rc.1', '^0.1.2-alpha.4')` 严格模式返回 **false**（只有 `includePrerelease` 才为 true）。peer 范围必须显式写成 `^0.1.5-rc.1` 才能接纳 rc 线。
+2. **`dsh-client-ui-primitives` 不声明 `dependencies`**，其 bundle 裸 import `shiki` / `@shikijs/langs/*` / `anser` / `clsx` / `katex` / `mdast-util-*` / `micromark-*`。这些**必须由消费者提升进 `devDependencies`**（本仓库已照 better-sidebar 的做法补齐），否则 vitest 的 browser 用例在 resolve 阶段报 `Failed to resolve import`。**这组 devDependencies 不得回退。**
+
+> client bundle 的产物名与注册 id 跟 better-sidebar 无关：本插件只调用 `ctx.betterSidebar.registerTab` / `openTab` 公开面。better-sidebar v0.19.0 起把 tab 转发到 **DSH 原生右侧栏**（`ctx.sidebarRightTabs`）——那是它的内部承载面迁移，`registerTab` / `openTab` 签名未变，**本插件无需改动**。
+
 ## 测试
 
 `tests/`（vitest，browser 组件用 jsdom）：
@@ -272,7 +289,10 @@ pnpm proto:verify       # 多根 runner 原型实证（Windows ACL，需先 buil
 - `client-apply.spec.tsx` / `client-components.spec.tsx` — 插件形态、菜单注入、管理弹窗
 - `fs-fence.spec.ts` / `seam-wiring.spec.ts` — 多根 fence 收窄/隔离/自愈、runner 接线
 - `context-injection.spec.ts` — 上下文提醒（文本组成/折叠位置/去重/缺失标注）
-- `add-dir.spec.ts` — add-dir 工具（校验/审批/持久化）
-- `plugin-shape.spec.ts` — 插件导出形态
+- `add-dir.spec.ts` / `adddir-command.spec.ts` — add_dir 模型工具（校验/审批/持久化）与 /adddir 指令
+- `dirs-store-write.spec.ts` — SQLite 单事务整表替换
+- `open-directory.spec.ts` / `pick-browse.spec.ts` — 打开本地目录路由、跨盘符目录选择器
+- `search-upload.spec.ts` — 目录树搜索与上传
+- `client-api.spec.ts` / `plugin-shape.spec.ts` — client API 面、插件导出形态
 
 新增 API 面（如 `SpacesApi` 加方法）时，记得同步更新各测试里的 fake，否则 typecheck 会因缺方法失败。
