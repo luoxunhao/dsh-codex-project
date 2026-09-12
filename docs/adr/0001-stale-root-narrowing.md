@@ -47,7 +47,10 @@ space <id> root is not an existing directory: <path>
 
 ## 影响
 
-- `src/space-config.ts`：新增 `tryCanonicalDirectory` / `resolveSpaceRoots` / `SpaceMatch`；`matchingSpace` 与 `matchingMultiRootSpace` 返回 `SpaceMatch`，不再抛错；
-- `src/fs.ts` / `src/seam.ts` / `src/runner.ts` / `src/context-injection.ts`：消费 `SpaceMatch`，可写集合/ACE 物化/提醒文本使用现存根；
-- `src/spaces-api.ts` / `src/space-store.ts` / client 弹窗：`missingRoots` 派生与确认式清理；
-- 契约翻转被测试锁定（fs-fence / seam-wiring / proto-verify 的 fail-loud 断言改为收窄断言）。
+> 文件名注记：本 ADR 写于 0.8.0 的 `space-*` 命名期。同年后半的重命名（`space-*` → `dirs-*`）与 SQLite 改造（JSON 文件 → `node:sqlite` 的 `dirs.db`）把下述文件改名了；语义未变，映射如下。
+
+- `src/space-config.ts` → **`src/dirs-config.ts`**：`tryCanonicalDirectory` / `requireCanonicalDirectory` / `matchingWorkspace`（原 `matchingSpace` / `matchingMultiRootSpace` 合并为一个）返回 `WorkspaceMatch`（原 `SpaceMatch`），不再抛错；
+- `src/fs.ts` / `src/seam.ts` / `src/runner.ts` / `src/context-injection.ts`：消费 `WorkspaceMatch`，可写集合/ACE 物化/提醒文本使用现存根；
+- `src/spaces-api.ts` → **`src/dirs-api.ts`**、`src/space-store.ts` → **`src/dirs-store.ts`**；查询/写入参数由 `spaces`/`missingRoots` 改为 `dirs`/`missingDirs`；
+- **确认式清理（`allowMissingRoots`）未随重命名保留**：当前 API 面只有只读的 `missingDirs` 派生（见 README「HTTP API」），失效根通过「管理工作区」弹窗或 PUT `/dirs` 显式移除。这是本 ADR 第 6 条"配置卫生"在实现上的收窄，属已知差异，非回归；
+- 契约翻转被测试锁定（`fs-fence.spec.ts` / `seam-wiring.spec.ts` / `proto-verify.mjs` 的 fail-loud 断言改为收窄断言）。
