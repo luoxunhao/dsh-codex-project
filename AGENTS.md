@@ -7,7 +7,6 @@
 ## 1. 仓库硬约束（必须遵守）
 
 - **禁止修改 DSH 源码**：对官方仓库（<https://github.com/deepseek-ai/deepseek-harness>）的检出零写入。需要 DSH 没有的能力时，优先用公开/只读 API 或插件自有路由；确实做不到，先向用户说明取舍，不改 DSH。
-- **代码改动必须走 PR**：非文档改动在 `feat/*` / `fix/*` 分支开发，review 合并后进 main；**仅纯文档改动**（README / AGENTS.md / docs/）允许直推 main。
 - **挂载只走 `cordis.patch.yml` + profile 机制**，插件作为独立包被 profile 引用，不反向侵入 DSH。
 - **client 纯度门**：client bundle 只能 value-import 平台模块白名单（`tsdown.config.ts` 的 `CLIENT_EXTERNALS`）；与其他插件的运行时交互一律走 cordis 服务方法调用，`import type {}` 可共享类型但不产生运行时依赖。
 - **browser bundle 无 `node:path`**：路径字符串运算必须放 `src/client/paths.ts`（`basename` / `relativePath` / `resolvePath` / `samePath`），不许 import node 内置。
