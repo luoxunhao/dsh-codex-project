@@ -1,11 +1,10 @@
 /**
- * 项目文件夹 tab + 文件预览 tab tests. Project resolution drives the tree's
- * empty/single-root state, root rows (main + shared + missing), lazy per-dir
- * listing on expand, opening a file into its own preview tab (openPreview), the
- * right-click 引用到对话 (file / directory) menu action, the directory/file
- * context-menu contents, and error surfacing. A separate block covers the
- * FilePreviewTab, which renders the preview for the tab's `path` through the
- * plugin's own /codex-project API.
+ * 项目文件夹 tab tests. Project resolution drives the tree's empty/single-root
+ * state, root rows (main + shared + missing), lazy per-dir listing on expand,
+ * opening a file into its own preview tab (openPreview), the right-click 引用到
+ * 对话 (file / directory) menu action, the directory/file context-menu contents,
+ * and error surfacing. The preview page itself is covered in
+ * `native-sidebar.spec.tsx`.
  */
 
 // @vitest-environment jsdom
@@ -16,9 +15,8 @@ import { act } from 'react-dom/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import type { ProjectEntry, ProjectListing, ProjectView, SpacesApi } from '../src/client/api.ts'
-import type { ClientRuntimeContext, SidebarTabComponentProps } from '../src/client/context.ts'
+import type { ClientRuntimeContext } from '../src/client/context.ts'
 import { ProjectTab } from '../src/client/project-tab.tsx'
-import { FilePreviewTab } from '../src/client/preview-tab.tsx'
 
 const ROOT_A = 'E:\\proj'
 const ROOT_B = 'D:\\shared'
@@ -401,54 +399,5 @@ describe('ProjectTab', () => {
     fake.api.project = async () => { throw new Error('boom') }
     const { tab } = await renderTab(fake.api, fakeCtx().ctx)
     expect(tab.textContent).toContain('boom')
-  })
-})
-
-describe('FilePreviewTab', () => {
-  afterEach(() => {
-    document.body.innerHTML = ''
-  })
-
-  const tabProps = (path?: string, cwd = ROOT_A): SidebarTabComponentProps => ({
-    ctx: fakeCtx().ctx,
-    scope: { sessionId: 's1', cwd },
-    tab: path === undefined ? undefined : { path, title: path.split('\\').pop() },
-  })
-
-  it('renders the markdown preview for the tab path through the plugin API', async () => {
-    const path = `${ROOT_A}\\notes.md`
-    const fake = fakeApi(PROJECT)
-    const recorder = fake.read
-    fake.api.readFile = async (cwd, filePath) => {
-      recorder.push({ cwd, path: filePath })
-      return { content: '# Title\n\nsome *text*', truncated: false }
-    }
-    const container = document.createElement('div')
-    document.body.appendChild(container)
-    const root = createRoot(container)
-    await act(async () => {
-      root.render(createElement(FilePreviewTab, { api: fake.api, tabProps: tabProps(path) }))
-    })
-    await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)) })
-    expect(fake.read).toEqual([{ cwd: ROOT_A, path }])
-    const markdown = container.querySelector('.dsh-cxp-preview-markdown')
-    expect(markdown, 'markdown preview host is present').not.toBeNull()
-    expect(markdown!.querySelector('h1')?.textContent).toBe('Title')
-    root.unmount()
-    container.remove()
-  })
-
-  it('shows a placeholder when no path is seeded', async () => {
-    const fake = fakeApi(PROJECT)
-    const container = document.createElement('div')
-    document.body.appendChild(container)
-    const root = createRoot(container)
-    await act(async () => {
-      root.render(createElement(FilePreviewTab, { api: fake.api, tabProps: tabProps(undefined) }))
-    })
-    await act(async () => {})
-    expect(container.textContent).toContain('未指定要预览的文件')
-    root.unmount()
-    container.remove()
   })
 })
