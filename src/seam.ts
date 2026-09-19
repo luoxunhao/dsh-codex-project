@@ -57,12 +57,18 @@ export function bwrapWorkspaceWriteArgs(workspaceRoot: string): string[] {
  */
 export function wrapSandboxConfine(sandbox: SandboxProvider, runnerPath: string): () => void {
   const original = sandbox.confine
-  sandbox.confine = (argv: readonly string[], policy: SandboxPolicy): ConfinedArgv => {
-    if (process.platform !== 'win32') return Reflect.apply(original, sandbox, [argv, policy])
-    if (policy.mode !== 'workspace-write') return Reflect.apply(original, sandbox, [argv, policy])
+  sandbox.confine = async (
+    argv: readonly string[],
+    policy: SandboxPolicy,
+    signal?: AbortSignal,
+  ): Promise<ConfinedArgv> => {
+    const passthrough = (): Promise<ConfinedArgv> =>
+      Reflect.apply(original, sandbox, [argv, policy, signal])
+    if (process.platform !== 'win32') return passthrough()
+    if (policy.mode !== 'workspace-write') return passthrough()
     const canonicalWorkspace = requireCanonicalDirectory('session workspace', policy.workspaceRoot)
     const match = matchingWorkspace(loadWorkspaceDirs(), canonicalWorkspace)
-    if (match === undefined || match.roots.length <= 1) return Reflect.apply(original, sandbox, [argv, policy])
+    if (match === undefined || match.roots.length <= 1) return passthrough()
     return {
       argv: [process.execPath, runnerPath, ...bwrapWorkspaceWriteArgs(canonicalWorkspace), '--', ...argv],
       // Same restricted-token mechanism as the core windows-acl runner, so

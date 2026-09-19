@@ -22,12 +22,12 @@ const isWin = process.platform === 'win32'
 /** A record-and-passthrough fake of the sandbox service. */
 function fakeSandbox(): {
   provider: SandboxProvider
-  calls: Array<{ argv: readonly string[]; policy: SandboxPolicy }>
+  calls: Array<{ argv: readonly string[]; policy: SandboxPolicy; signal?: AbortSignal }>
 } {
-  const calls: Array<{ argv: readonly string[]; policy: SandboxPolicy }> = []
+  const calls: Array<{ argv: readonly string[]; policy: SandboxPolicy; signal?: AbortSignal }> = []
   const provider = {
-    confine: (argv: readonly string[], policy: SandboxPolicy): ConfinedArgv => {
-      calls.push({ argv, policy })
+    confine: async (argv: readonly string[], policy: SandboxPolicy, signal?: AbortSignal): Promise<ConfinedArgv> => {
+      calls.push({ argv, policy, signal })
       return {
         argv: [...argv],
         enforcement: 'full',
@@ -64,11 +64,11 @@ describe('wrapSandboxConfine', () => {
     seedDirs(configPath, workspaces)
   }
 
-  it.runIf(isWin)('routes a workspace-write call inside a recorded workspace through the runner', () => {
+  it.runIf(isWin)('routes a workspace-write call inside a recorded workspace through the runner', async () => {
     writeDirs({ w1: { path: wsA, dirs: [wsB] } })
     const { provider, calls } = fakeSandbox()
     const dispose = wrapSandboxConfine(provider, runnerPath)
-    const result = provider.confine(['pwsh', '/Command', 'echo hi'], policy(wsA))
+    const result = await provider.confine(['pwsh', '/Command', 'echo hi'], policy(wsA))
 
     expect(result.argv.slice(0, 2)).toEqual([process.execPath, runnerPath])
     expect(result.argv.slice(2, 11)).toEqual(
@@ -85,77 +85,87 @@ describe('wrapSandboxConfine', () => {
     dispose()
   })
 
-  it('passes read-only calls through untouched', () => {
+  it('passes read-only calls through untouched', async () => {
     writeDirs({ w1: { path: wsA, dirs: [wsB] } })
     const { provider, calls } = fakeSandbox()
     const dispose = wrapSandboxConfine(provider, runnerPath)
-    const result = provider.confine(['true'], policy(wsA, 'read-only'))
+    const result = await provider.confine(['true'], policy(wsA, 'read-only'))
     expect(result.argv).toEqual(['true'])
     expect(calls).toHaveLength(1)
     dispose()
   })
 
-  it('passes calls outside every record through untouched', () => {
+  it('forwards the cancellation signal to the original confine', async () => {
     writeDirs({ w1: { path: wsA, dirs: [wsB] } })
     const { provider, calls } = fakeSandbox()
     const dispose = wrapSandboxConfine(provider, runnerPath)
-    const result = provider.confine(['true'], policy(outside))
+    const signal = new AbortController().signal
+    await provider.confine(['true'], policy(wsA, 'read-only'), signal)
+    expect(calls[0]?.signal).toBe(signal)
+    dispose()
+  })
+
+  it('passes calls outside every record through untouched', async () => {
+    writeDirs({ w1: { path: wsA, dirs: [wsB] } })
+    const { provider, calls } = fakeSandbox()
+    const dispose = wrapSandboxConfine(provider, runnerPath)
+    const result = await provider.confine(['true'], policy(outside))
     expect(result.argv).toEqual(['true'])
     expect(calls).toHaveLength(1)
     dispose()
   })
 
-  it('passes records without dirs through untouched (core-identical semantics)', () => {
+  it('passes records without dirs through untouched (core-identical semantics)', async () => {
     writeDirs({ w1: { path: wsA, dirs: [] } })
     const { provider, calls } = fakeSandbox()
     const dispose = wrapSandboxConfine(provider, runnerPath)
-    const result = provider.confine(['true'], policy(wsA))
+    const result = await provider.confine(['true'], policy(wsA))
     expect(result.argv).toEqual(['true'])
     expect(calls).toHaveLength(1)
     dispose()
   })
 
-  it('passes single-root records through untouched (core-identical semantics)', () => {
+  it('passes single-root records through untouched (core-identical semantics)', async () => {
     writeDirs({ w1: { path: wsA, dirs: [] } })
     const { provider, calls } = fakeSandbox()
     const dispose = wrapSandboxConfine(provider, runnerPath)
-    const result = provider.confine(['true'], policy(wsA))
+    const result = await provider.confine(['true'], policy(wsA))
     expect(result.argv).toEqual(['true'])
     expect(calls).toHaveLength(1)
     dispose()
   })
 
-  it.runIf(isWin)('still routes through the runner when some added dirs are missing (narrowing)', () => {
+  it.runIf(isWin)('still routes through the runner when some added dirs are missing (narrowing)', async () => {
     writeDirs({ w1: { path: wsA, dirs: [join(base, 'missing'), wsB] } })
     const { provider } = fakeSandbox()
     const dispose = wrapSandboxConfine(provider, runnerPath)
     // Narrowing: a dead dir is skipped, but the surviving dir keeps the
     // multi-root route active.
-    const result = provider.confine(['true'], policy(wsA))
+    const result = await provider.confine(['true'], policy(wsA))
     expect(result.argv.slice(0, 2)).toEqual([process.execPath, runnerPath])
     expect(result.argv[result.argv.indexOf('--bind') + 1]).toBe(wsA)
     dispose()
   })
 
-  it('passes through when all added dirs vanish (single root remains)', () => {
+  it('passes through when all added dirs vanish (single root remains)', async () => {
     writeDirs({ w1: { path: wsA, dirs: [join(base, 'missing')] } })
     const { provider, calls } = fakeSandbox()
     const dispose = wrapSandboxConfine(provider, runnerPath)
     // Narrowing to a single root is core-identical: pass through.
-    const result = provider.confine(['true'], policy(wsA))
+    const result = await provider.confine(['true'], policy(wsA))
     expect(result.argv).toEqual(['true'])
     expect(calls).toHaveLength(1)
     dispose()
   })
 
-  it.runIf(isWin)('unrelated dead records never affect other workspaces', () => {
+  it.runIf(isWin)('unrelated dead records never affect other workspaces', async () => {
     writeDirs({
       dead: { path: join(base, 'dead-path'), dirs: [join(base, 'dead-dir')] },
       w1: { path: wsA, dirs: [wsB] },
     })
     const { provider } = fakeSandbox()
     const dispose = wrapSandboxConfine(provider, runnerPath)
-    const result = provider.confine(['true'], policy(wsA))
+    const result = await provider.confine(['true'], policy(wsA))
     expect(result.argv.slice(0, 2)).toEqual([process.execPath, runnerPath])
     dispose()
   })
@@ -169,20 +179,20 @@ describe('wrapSandboxConfine', () => {
     expect(provider.confine).toBe(original)
   })
 
-  it('behaves as a pure pass-through on non-Windows hosts', () => {
+  it('behaves as a pure pass-through on non-Windows hosts', async () => {
     const { provider, calls } = fakeSandbox()
     const dispose = wrapSandboxConfine(provider, runnerPath)
-    const result = provider.confine(['true'], policy(wsA))
+    const result = await provider.confine(['true'], policy(wsA))
     expect(result.argv).toEqual(['true'])
     expect(calls).toHaveLength(1)
     dispose()
   })
 
-  it('keeps pass-through behavior when no records are configured', () => {
+  it('keeps pass-through behavior when no records are configured', async () => {
     seedDirs(configPath, {})
     const { provider, calls } = fakeSandbox()
     const dispose = wrapSandboxConfine(provider, runnerPath)
-    const result = provider.confine(['true'], policy(wsA))
+    const result = await provider.confine(['true'], policy(wsA))
     expect(result.argv).toEqual(['true'])
     expect(calls).toHaveLength(1)
     dispose()
