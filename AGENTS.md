@@ -24,13 +24,13 @@
 
 ```bash
 pnpm typecheck          # tsc --noEmit
-pnpm test               # vitest run（18 个文件 / 218 用例）
+pnpm test               # vitest run（18 个文件 / 220 用例）
 pnpm build              # tsc(types) + tsdown（host ESM + client CJS + runner + fs）
 pnpm proto:verify       # 多根 runner 原型实证（Windows ACL，需先 build）
 ```
 
 - **产物**：`lib/index.js`（host）、`lib/runner.js`、`lib/fs.js`、`lib/client.js`（浏览器 bundle，CJS closure 工厂注册 id `dsh-codex-project`）。
-- **宿主基线**：`@deepseek-ai/dsh-*` peer 一律 `^0.1.6-alpha.2`（已在发布版 0.1.6-alpha.2 上完成真机挂载验证）；`@deepseek-ai/cordis` `^4.0.2`。**别写回 `^0.1.2-alpha.4` / `^0.1.5-rc.1`**——semver 普通范围不匹配预发布版本，会拒绝 0.1.6-alpha.x。
+- **宿主基线**：`@deepseek-ai/dsh-*` peer 一律 `^0.1.6-alpha.2`（曾在 0.1.6-alpha.2 真机上完成挂载验证；**但那次验证之后又改了挂载面**——`ctx.inject` 依赖表加了 `sessions`、`dsh.client.inject` 摘掉了承载包，所以这条线目前**待重验**，重验清单见 README 基线表）；`@deepseek-ai/cordis` `^4.0.2`。**别写回 `^0.1.2-alpha.4` / `^0.1.5-rc.1`**——semver 普通范围不匹配预发布版本，会拒绝 0.1.6-alpha.x。
 - **`dsh-client-ui-primitives` 不声明 `dependencies`**：其 bundle 裸 import `shiki` / `@shikijs/langs/*` / `anser` / `clsx` / `katex` / `mdast-util-*` / `micromark-*` / `diff` / `simple-icons`（0.1.6 起了 DiffBlock 又加进 `diff`+`simple-icons`）。这组包**必须留在 devDependencies**（浏览器用例的 resolve 依赖它们），不得"清理"掉；升 primitives 版本后先 `grep -ohE "from ['\"][^./]" lib/…/dsh-client-ui-primitives/lib/index.js` 对一遍清单。
 - **`tsconfig.build.json` 的 `rootDir` 必须是 `src`**：设成 `.` 会让声明落到 `lib/types/src/*`，与 package.json 的 `types` 子路径错位，消费者拿不到类型。
 - **client 白名单**：`react`、`react/jsx-runtime`、`react-dom`、`react-dom/client`、`cordis`、`@deepseek-ai/dsh-client-ui-slots`、`@deepseek-ai/dsh-client-ui-primitives`。纯度门插件在 resolve 阶段拒绝任何其他 `@deepseek-ai/*` value import 与 node 内置。
