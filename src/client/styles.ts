@@ -279,7 +279,7 @@ const CSS = `
   line-height: 1.4;
 }
 
-/* --- 项目文件夹 tab (rendered inside the better-sidebar panel) ---
+/* --- 项目文件夹 tab (rendered inside the native right-Sidebar pane) ---
    Rows mirror better-sidebar's explorer (34px rows, 8px radius, 22px indent,
    hover fill, hover-revealed @-reference button) via the same dsw tokens. */
 [data-dsh-codex-project-tab] {

@@ -1,14 +1,33 @@
-# Local development mount (never shipped): the row `name` points at the built
-# host module so `dsh --profile web --patch <this-file> --port <p>` mounts the
-# plugin WITHOUT installing it into the profile. On Windows the name must be
-# a file:// URL (a bare E:/ path is parsed as the 'e:' URL scheme).
+# Local development mount (never shipped). THIS OVERLAY DOES NOT WORK ON DSH
+# 0.1.6 — kept only as the record of why, and as a template for whoever finds
+# the single-row form. Active rows are commented out so copying this file cannot
+# hand you a half-mounted plugin.
 #
-# Mirrors cordis.patch.yml including the fs swap: the core fs-sandbox row is
-# disabled and the plugin's multi-root fs provider is mounted in its place.
-- id: fs-sandbox
-  disabled: true
-- insert:
-    - id: codex-project
-      name: 'file:///E:/project/deepseek-harness-plugins/dsh-codex-project/lib/index.js'
-    - id: codex-project-fs
-      name: 'file:///E:/project/deepseek-harness-plugins/dsh-codex-project/lib/fs.js'
+# What happens: `client-modules` merges Loader sources by PACKAGE name, so the
+# two file:// rows below (`lib/index.js` and `lib/fs.js`, both inside this one
+# package) fail with
+#   package @luoxunhao/dsh-codex-project resolves from multiple active Loader
+#   sources; remove one entry
+# and the plugin's client never enters the module graph — no 项目文件夹 / 文件预览
+# tab. Measured on 0.1.6-alpha.2.
+#
+# Use the official channel instead (verified end to end on that baseline):
+#   dsh plugin --profile web add <this repo>        # then `dsh web`
+# `cordis.patch.yml` is the mount that ships: it names the rows by package
+# specifier, which the package-name merge accepts. On Windows a file:// URL is
+# required anyway (a bare E:/ path parses as the 'e:' URL scheme).
+#
+# Note the pair is not merely redundant — disabling the core fs-sandbox row is
+# only correct together with the plugin's own fs provider, so one row or the
+# other alone leaves the host without a filesystem provider at all. That is what
+# a single-row dev overlay has to solve.
+#
+# So every row is commented out, and pointing `--patch` at this file today
+# mounts NOTHING (check the startup log rather than assuming it worked).
+# - id: fs-sandbox
+#   disabled: true
+# - insert:
+#     - id: codex-project
+#       name: 'file:///E:/project/dsh/dsh-codex-project/lib/index.js'
+#     - id: codex-project-fs
+#       name: 'file:///E:/project/dsh/dsh-codex-project/lib/fs.js'

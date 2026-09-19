@@ -26,7 +26,7 @@ Codex 处理项目时，一个"项目"往往横跨多个目录：主代码库、
 |---|---|
 | 共享子目录配置 | 每个工作区可配置任意数量共享子目录（跨盘符、可裸目录） |
 | 「管理工作区」弹窗 | 原生工作区「…」菜单注入入口：添加/移除共享子目录 |
-| 「项目文件夹」tab | better-sidebar 侧边栏注册的项目多根目录树：主根 + 共享子目录（跨盘符），按层懒加载；仿 Files tab 布局（顶部路径输入框 + 右侧可拖拽文件树 + 左侧内联预览与编辑：图片 / PDF / Markdown / HTML / 代码编辑与 Ctrl+S 保存 / 二进制下载），右键目录用文件管理器打开 |
+| 「项目文件夹」tab | 侧边栏注册的项目多根目录树：主根 + 共享子目录（跨盘符），按层懒加载；仿 Files tab 布局（顶部搜索框 + 刷新/上传按钮 + 文件树，点击文件在插件自有的「文件预览」page 内打开），右键目录用文件管理器打开。**承载走 DSH 原生右侧栏**（`ctx.sidebarRightTabs` + `sidebar.right.pane.tab` 键控 seat，0.1.6 的 web 组合默认自带） |
 | 「打开本地目录」 | 原生「…」菜单注入入口：用系统文件管理器打开该工作区文件夹（插件自有路由 spawn explorer.exe——不走 workspaces.openPath，避免被 better-sidebar 等插件劫持到侧边栏编辑器） |
 | 多根沙箱 runner | 命中配置的会话，shell/subprocess 自动走多根受限令牌（`lib/runner.js`） |
 | 多根 fs fence | 进程内 fs 工具（read/write/edit）同样按配置可写根放行（`lib/fs.js`） |
@@ -41,6 +41,8 @@ Codex 处理项目时，一个"项目"往往横跨多个目录：主代码库、
 ┌─────────────────────────── DSH web ───────────────────────────────────┐
 │  (client half)                                                        │
 │  侧边栏工作区「…」菜单 ──注入「打开本地目录」+「管理工作区」──▶ 本地动作/弹窗  │
+│  「项目文件夹」tab ──注册进 DSH 原生右侧栏（sidebarRightTabs + seat）  │
+│        │              └ 文件在插件自有的「文件预览」page 内打开        │
 │        │ fetch()                                                      │
 │        ▼                                                              │
 │  /codex-project/api  (CRUD + 项目目录树，loopback 守卫)                │
@@ -208,7 +210,7 @@ fs fence 按可写根集合放行/拒绝（与 runner 共用同一命中判定�
 
 **前置**：已装好 DSH（`dsh web` 能正常运行），Node.js ≥ 22.5、pnpm ≥ 10。
 
-本插件基线 **DSH 0.1.5-rc.1+**（已在 **0.1.5-rc.2** 上完成门禁验证）：peer 范围 `^0.1.5-rc.1`，运行时装 0.1.5-rc.2。**0.1.2-alpha.x 不再支持**——该线的宿主服务面已变，请升级 DSH 运行时。
+本插件基线 **DSH 0.1.6-alpha.2**（peer 范围 `^0.1.6-alpha.2`，已在发布版 **0.1.6-alpha.2** 上完成真机挂载验证：「项目文件夹」「文件预览」两个 tab 在原生右侧栏内正常打开）。**0.1.5-rc.x 与 0.1.2-alpha.x 不再支持**——原生侧边栏那条承载线要 0.1.6，旧线的宿主服务面也已变，请升级 DSH 运行时。
 
 ```sh
 dsh plugin --profile web add @luoxunhao/dsh-codex-project
@@ -225,11 +227,7 @@ pnpm install && pnpm build
 dsh plugin --profile web add <本仓库绝对路径>
 ```
 
-也可用 `dev.patch.yml` 挂载（无需 install 进 profile）：
-
-```sh
-dsh --profile web --patch <本仓库绝对路径>/dev.patch.yml
-```
+~~也可用 `dev.patch.yml` 挂载（无需 install 进 profile）~~ —— **0.1.6 上不可用**：该文件用两条 `file://` 行加载同一个包，`client-modules` 现在按包名归并 Loader 源，会直接报 `resolves from multiple active Loader sources; remove one entry`，插件 client 进不了模块图（侧边栏不出现）。用上面 `dsh plugin --profile web add <路径>` 挂载（实测可用）。
 
 client 改动浏览器硬刷新即可；host 改动（路由、seam、fs、runner）需重启 `dsh web`。
 
@@ -243,7 +241,7 @@ client 改动浏览器硬刷新即可；host 改动（路由、seam、fs、runne
 | 报 `Ignored build scripts` | pnpm 拦截构建脚本。在 profile 目录下跑 `pnpm approve-builds --all`。 |
 | 报 `minimum release age` | 版本发布不足 24 小时。等 24h 或重跑一次。 |
 | 报「找不到 profile 目录」 | 先跑一次 `dsh web`，让它初始化 profile。 |
-| 「项目文件夹」tab 不出现 | better-sidebar 未安装。该 tab 仅在 better-sidebar 安装时注册。 |
+| 「项目文件夹」tab 不出现 | 多半是 client 根本没进模块图：看 `dsh web` 启动日志有没有 `client-modules: ... resolves from multiple active Loader sources`（用 `dev.patch.yml` 的两条 `file://` 行挂载就会触发，见上方「本地开发」）。改用 `dsh plugin --profile web add` 挂载。原生侧边栏（ui-sidebar-right）是 0.1.6 web 组合的默认装配，缺失即宿主版本不对。 |
 | Windows 下终端/runner 异常 | 确认 `@deepseek-ai/dsh-sandbox-windows-acl` 已正确安装（koffi 需构建脚本）。 |
 
 </details>
@@ -252,7 +250,7 @@ client 改动浏览器硬刷新即可；host 改动（路由、seam、fs、runne
 
 ```bash
 pnpm typecheck          # 类型检查（tsc --noEmit）
-pnpm test               # 单元测试（vitest，16 个文件）
+pnpm test               # 单元测试（vitest，18 个文件 / 218 用例）
 pnpm build              # 构建 lib/（tsc types + tsdown：host ESM + client CJS + runner + fs）
 pnpm proto:verify       # 多根 runner 原型实证（Windows ACL，需先 build）
 ```
@@ -261,32 +259,36 @@ pnpm proto:verify       # 多根 runner 原型实证（Windows ACL，需先 buil
 
 - client bundle 禁止 value-import 其他插件的运行时符号（纯度门）；与 DSH 源码的集成只走公开/只读 API；
 - browser bundle 无 `node:path`——路径运算放 `src/client/paths.ts`；
-- 「项目文件夹」tab 通过 `betterSidebar.registerTab` 接入（仅在 better-sidebar 安装时注册），client 侧用结构化再声明消费；
+- 「项目文件夹」「文件预览」注册进 DSH 原生右侧栏（`ctx.sidebarRightTabs` + 键控 `sidebar.right.pane.tab` / `.title` seat，见 `src/client/native-sidebar.tsx`），只走公开面，client 侧用结构化再声明消费（`src/client/context.ts`）。所需服务经 `ctx.inject(['sidebarRightTabs','slots','sessions'], …)` **等待**而非一次性探测；该承载包因此**不写进 `dsh.client.inject`**（那是加载/组合边，也不是 `PLATFORM_MODULES`）。往下传给组件的 runtime ctx 是**合成**出来的 `{ get, sessions }`——插件自己的 `ctx` 是 cordis 代理，`ctx.sessions` 读出来就是 `undefined`，直接传下去会让「引用到对话」静默失效。better-sidebar ≥0.19 会把 tab 转发进同一原生面，所以**不再往 `betterSidebar.registerTab` 注册**（注册了就会出两个「项目文件夹」）；
+- 原生两个 type（`codex-project` / `codex-project-file`）都是 **page 类型**（不声明 `patterns`），不与产品自带的 `dsh-resource://file/**` viewer 抢地址；文件预览走插件自有多根路由，跨盘共享目录才可预览；
 - fence 只改一处：复用 `dirs-api.ts` 的 `fenceFor`，不要另写一份 roots 推导。
 
-## 宿主版本基线（0.1.5-rc.1+）
+## 宿主版本基线（0.1.6-alpha.2）
 
 | 项 | 值 |
 |---|---|
-| peer 范围 | `@deepseek-ai/dsh-*` 一律 `^0.1.5-rc.1`（`^0.1.5-rc.1` 天然容纳 rc.2，rc.1 用户无需升级插件） |
-| 验证基线 | **DSH 0.1.5-rc.2**（`pnpm typecheck` / `pnpm test` 201 用例 / `pnpm build` 全绿） |
+| peer 范围 | `@deepseek-ai/dsh-*` 一律 `^0.1.6-alpha.2` |
+| 验证基线 | **DSH 0.1.6-alpha.2**（发布版：`dsh plugin --profile web add` 装进 `web` profile → `dsh web`，原生右侧栏内两个 tab 实测可开；`pnpm typecheck` / `pnpm test` 220 用例 / `pnpm build` 全绿）。⚠️ 原生路径改过 `ctx.inject` 依赖表与 `dsh.client.inject` 行之后，这两条属挂载面改动，**合并前需在该基线上重跑一次真机验证**（含「引用到对话」与重复点击同一文件两项） |
 | `@deepseek-ai/cordis` | `^4.0.2`（与 DSH `vendor/cordis` 同版） |
 
-**两个必须知道的坑**（升级时踩过，别再踩）：
+**三个必须知道的坑**（升级时踩过，别再踩）：
 
-1. **`^0.1.2-alpha.4` 会拒绝 `0.1.5-rc.1`**。semver 规定普通范围不匹配预发布版本——`semver.satisfies('0.1.5-rc.1', '^0.1.2-alpha.4')` 严格模式返回 **false**（只有 `includePrerelease` 才为 true）。peer 范围必须显式写成 `^0.1.5-rc.1` 才能接纳 rc 线。
-2. **`dsh-client-ui-primitives` 不声明 `dependencies`**，其 bundle 裸 import `shiki` / `@shikijs/langs/*` / `anser` / `clsx` / `katex` / `mdast-util-*` / `micromark-*`。这些**必须由消费者提升进 `devDependencies`**（本仓库已照 better-sidebar 的做法补齐），否则 vitest 的 browser 用例在 resolve 阶段报 `Failed to resolve import`。**这组 devDependencies 不得回退。**
+1. **semver 普通范围不匹配预发布版本**。`semver.satisfies('0.1.6-alpha.2', '^0.1.5-rc.1')` 严格模式返回 **false**——peer 范围必须显式写成目标预发布线（`^0.1.6-alpha.2`），否则装不上。
+2. **`dsh-client-ui-primitives` 不声明 `dependencies`**，其 bundle 裸 import `shiki` / `@shikijs/langs/*` / `anser` / `clsx` / `katex` / `mdast-util-*` / `micromark-*`，0.1.6 起又加了 `diff` 与 `simple-icons`（DiffBlock / 品牌图标）。这些**必须由消费者提升进 `devDependencies`**（本仓库已补齐），否则 vitest 的 browser 用例在 resolve 阶段报 `Failed to resolve import`。**这组 devDependencies 不得回退**；升 primitives 后先把它 bundle 的裸 import 全列一遍再对。
+3. **一个包只能有一条 Loader 行**。0.1.6 的 `client-modules` 按包名归并 Loader 源，`lib/index.js` + `lib/fs.js` 两条 `file://` 行会被判为 `resolves from multiple active Loader sources` 并让插件 client 掉出模块图（见「本地开发」）。
 
-> client bundle 的产物名与注册 id 跟 better-sidebar 无关：本插件只调用 `ctx.betterSidebar.registerTab` / `openTab` 公开面。better-sidebar v0.19.0 起把 tab 转发到 **DSH 原生右侧栏**（`ctx.sidebarRightTabs`）——那是它的内部承载面迁移，`registerTab` / `openTab` 签名未变，**本插件无需改动**。
+> client bundle 的注册 id 与侧边栏承载无关：插件只调用公开面（`ctx.sidebarRightTabs` + `ctx.slots`）。better-sidebar v0.19.0 起把 tab 转发到 **DSH 原生右侧栏**——正因如此，**两者同时注册会出两个「项目文件夹」tab**，插件只走原生那一条。
 
 ## 测试
 
 `tests/`（vitest，browser 组件用 jsdom）：
 
 - `dirs-api.spec.ts` — CRUD + 锚定 + 失效根 + 项目解析 + 目录列表（排序/fence 403/跨盘根）+ 读/写/文件字节与下载 disposition
-- `project-tab.spec.tsx` — 无配置回退单根、根行（主/共享/缺失）、懒加载、点击即内联预览、右键菜单
+- `project-tab.spec.tsx` — 无配置回退单根、根行（主/共享/缺失）、懒加载、点击把文件交给 `openPreview`、右键菜单
 - `file-reference.spec.ts` — @ 引用源注册 / 注入 / 序列化
 - `client-apply.spec.tsx` / `client-components.spec.tsx` — 插件形态、菜单注入、管理弹窗
+- `native-sidebar.spec.tsx` — 原生右侧栏两阶段注册（type/body/title 的 id 与 key）、page body 经 `tab.actions.openTab` 打开自有预览、`navigation.params` 与 chip 标题回退、`useTabInfo` 抛错时的等待态、晚到的 carrier、unload 回收、合成 runtime ctx 真能拿到 `sessions.scope`/`conversation`、同一文件再次导航（`revision` 变）会重读
+- `native-sidebar-composition.spec.ts` — 用真实 `SlotCore` 验证键控 seat 的声明/落位/回收（未声明 seat 不抛，正是走 `slots.inject` 的理由）
 - `fs-fence.spec.ts` / `seam-wiring.spec.ts` — 多根 fence 收窄/隔离/自愈、runner 接线
 - `context-injection.spec.ts` — 上下文提醒（文本组成/折叠位置/去重/缺失标注）
 - `add-dir.spec.ts` / `adddir-command.spec.ts` — add_dir 模型工具（校验/审批/持久化）与 /adddir 指令

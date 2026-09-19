@@ -1,24 +1,25 @@
 /**
- * 项目文件夹 tab (registered into better-sidebar): a FILE-TREE-ONLY panel of
- * the project anchored at the current session's cwd — the main workspace root
- * plus every shared additional dir (cross-drive). It mirrors the better-sidebar
- * Files-tab explorer look: a toolbar with a file-name SEARCH box + refresh +
- * upload-files + upload-folder, above a lazy directory tree whose folder rows
- * expand in place and whose file rows open their preview in a SEPARATE sidebar
- * tab (the plugin's `codex-project:file` tab, which reads through the plugin's
- * multi-root routes — so cross-drive shared dirs preview fine). No inline
- * preview/editor pane lives in this tab; clicking a file hands it to
- * `openPreview`. The search box runs a debounced recursive file-name search
- * over the project roots and shows a flat result list (each opens the preview
- * tab); uploads write files/folders into the project's main root via the
- * plugin's fenced /upload route.
+ * 项目文件夹 page body (mounted by `native-sidebar.tsx` into DSH's own right
+ * Sidebar): a FILE-TREE-ONLY panel of the project anchored at the current
+ * session's cwd — the main workspace root plus every shared additional dir
+ * (cross-drive). It keeps the better-sidebar Files-tab explorer look: a toolbar
+ * with a file-name SEARCH box + refresh + upload-files + upload-folder, above a
+ * lazy directory tree whose folder rows expand in place and whose file rows open
+ * their preview in a SEPARATE page (the plugin's `codex-project-file` page,
+ * which reads through the plugin's multi-root routes — so cross-drive shared
+ * dirs preview fine). No inline preview/editor pane lives in this tab; clicking
+ * a file hands it to `openPreview`. The search box runs a debounced recursive
+ * file-name search over the project roots and shows a flat result list (each
+ * opens the preview page); uploads write files/folders into the project's main
+ * root via the plugin's fenced /upload route.
  *
  * With no shared config the tab falls back to the session's own working
  * directory as a single root, so the tree always has content. The tree is
  * self-contained (the client bundle's purity gate forbids value-importing
- * better-sidebar's FileTree): each directory loads its level lazily through the
- * plugin's own /list route, fenced to the project roots on the host. Rows
- * mirror better-sidebar's explorer metrics via the shared `--dsw-*` tokens.
+ * another package's runtime, and the native file tree is fenced to one root
+ * anyway): each directory loads its level lazily through the plugin's own /list
+ * route, fenced to the project roots on the host. Rows mirror the explorer
+ * metrics via the shared `--dsw-*` tokens.
  *
  * Row interactions: expand/collapse a directory; open a file in the preview
  * tab; right-click a row for a context menu — 引用到对话 (file or directory),
