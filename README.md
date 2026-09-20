@@ -268,7 +268,7 @@ pnpm proto:verify       # 多根 runner 原型实证（Windows ACL，需先 buil
 | 项 | 值 |
 |---|---|
 | peer 范围 | `@deepseek-ai/dsh-*` 一律 `^0.1.6-alpha.2` |
-| 验证基线 | **DSH 0.1.6-alpha.2**（发布版：`dsh plugin --profile web add` 装进 `web` profile → `dsh web`，原生右侧栏内两个 tab 实测可开；`pnpm typecheck` / `pnpm test` 220 用例 / `pnpm build` 全绿）。⚠️ 原生路径改过 `ctx.inject` 依赖表与 `dsh.client.inject` 行之后，这两条属挂载面改动，**合并前需在该基线上重跑一次真机验证**（含「引用到对话」与重复点击同一文件两项） |
+| 验证基线 | **DSH 0.1.6-alpha.2**（`dsh plugin --profile web add <本仓库>` 装进 `web` profile → `dsh web`）。**2026-09-20 真机重验通过**，挂载面那两条改动（`ctx.inject` 依赖表加 `sessions`、`dsh.client.inject` 摘掉承载包）不再是欠账：原生右侧栏 tab 条出现「项目文件夹」并可打开；根行展开的目录列表走插件自有多根路由；点文件开 `codex-project-file` 预览 tab（markdown 正常渲染）；切「编辑」CodeMirror 正常挂载，未脏时「保存」为 disabled；右键「引用到对话」真的把引用插进了输入框——即合成 `{ get, sessions }` 那条在真宿主上生效，不是只被 jsdom fake 建模。`pnpm typecheck` / `pnpm build` 全绿，`pnpm test` 全跑通且控制台零报错（唯一警告来自无关的 dsh-dream-skin，外观类）。用例数这里不写死：本轮跑的是含未提交 add-dir 改动的工作树，比 HEAD 多 5 个，「测试」节那个数仍按 HEAD 记。两点保留：**本次是 `link:` 指向本地构建**（npm 上只有 0.11.0，非发布版路径）；**「重复点击同一文件会重读」一项本轮未测** |
 | `@deepseek-ai/cordis` | `^4.0.2`（与 DSH `vendor/cordis` 同版） |
 
 **三个必须知道的坑**（升级时踩过，别再踩）：
