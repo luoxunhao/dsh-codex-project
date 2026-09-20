@@ -118,11 +118,10 @@ export function defineAdddirCommand(deps: AdddirCommandDeps): AdddirCommandDefin
       }
       if (!isDirectory) return { kind: 'error', text: `not an existing directory: ${picked}` }
       try {
-        const records = await deps.store.load()
-        const record = records[workspaceId]
-        const existing = record?.dirs ?? []
-        const dirs = existing.includes(picked) ? existing : [...existing, picked]
-        const saved = await deps.store.setDirs(workspaceId, dirs)
+        // Auto-anchors the workspace on first use (same primitive the manage
+        // dialog and add_dir tool converge on), so a fresh workspace never
+        // fails with an unanchored-record error.
+        const saved = await deps.store.addDir(workspaceId, cwd, picked)
         return { kind: 'success', text: `Added ${picked}.\nAdditional writable directories: ${saved.dirs.join(', ') || '(none)'}` }
       } catch (error) {
         if (error instanceof DirsStoreError) return { kind: 'error', text: error.message }

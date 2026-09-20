@@ -23,7 +23,7 @@
 
 ```bash
 pnpm typecheck          # tsc --noEmit
-pnpm test               # vitest run（18 个文件 / 220 用例）
+pnpm test               # vitest run（18 个文件 / 225 用例）
 pnpm build              # tsc(types) + tsdown（host ESM + client CJS + runner + fs）
 pnpm proto:verify       # 多根 runner 原型实证（Windows ACL，需先 build）
 ```

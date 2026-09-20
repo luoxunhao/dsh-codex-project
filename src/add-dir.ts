@@ -93,11 +93,10 @@ export function defineAddDirTool(deps: AddDirToolDeps) {
       const outcome = await deps.requestApproval(agent, path, exec.signal)
       if (outcome !== 'allowed-once') return { ok: false, reason: `approval ${outcome}` }
       try {
-        const records = await deps.store.load()
-        const record = records[workspaceId]
-        const existing = record?.dirs ?? []
-        const dirs = existing.includes(path) ? existing : [...existing, path]
-        const saved = await deps.store.setDirs(workspaceId, dirs)
+        // Auto-anchors the workspace on first use (same primitive the manage
+        // dialog and /adddir converge on), so a fresh workspace never fails
+        // with an unanchored-record error.
+        const saved = await deps.store.addDir(workspaceId, cwd, path)
         return { ok: true, dirs: saved.dirs }
       } catch (error) {
         if (error instanceof DirsStoreError) return { ok: false, reason: error.message }

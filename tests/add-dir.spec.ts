@@ -77,6 +77,17 @@ describe('add_dir tool', () => {
     expect(await store.load()).toMatchObject({ w1: { path: workspacePath, dirs: [dirA] } })
   })
 
+  it('auto-anchors a workspace with no record yet (add_dir works on a fresh workspace)', async () => {
+    const { deps, store } = makeDeps(async () => 'allowed-once' as const)
+    // Note: no store.anchor(...) before this — the bug this guards is add_dir
+    // failing with "no workspace <id>" on a workspace that was never managed
+    // through the GUI PUT.
+
+    const result = await run(deps, dirA)
+    expect(result).toEqual({ ok: true, dirs: [dirA] })
+    expect(await store.load()).toMatchObject({ w1: { path: workspacePath, dirs: [dirA] } })
+  })
+
   it('does not write on rejected or unavailable approval', async () => {
     for (const outcome of ['rejected', 'unavailable'] as const) {
       const { deps, store } = makeDeps(async () => outcome)

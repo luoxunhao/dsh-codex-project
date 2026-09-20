@@ -168,20 +168,33 @@ export function apply(ctx: Context): void {
 
   // Register the /adddir human command (the add_dir tool's operator-facing
   // twin): opens a native picker and adds the chosen folder to the active
-  // session's workspace. Requires the dsh `commands` service and a native
-  // `directoryPicker`; when either is absent (unusual compositions), the
-  // command simply does not register — the model tool and GUI still work.
-  const commands = ctx.get('commands') as CommandsServiceFace | undefined
-  if (commands !== undefined) {
+  // session's workspace. The command's handler is native-only, so it registers
+  // only when the composed directoryPicker serves that capability — a picker
+  // that serves `browse` (or is absent) leaves /adddir off the menu instead of
+  // offering a command that can never succeed. Whether a composition is native
+  // follows the picker's provider, not the profile name: the `web` profile
+  // serves `native` here because a desktop bridge provides the picker (observed
+  // on 0.1.6-alpha.2, 2026-09-20).
+  //
+  // Awaited through a `ctx.inject` sub-fiber rather than probed once with
+  // `ctx.get` in apply(): both services are optional, and a one-shot read misses
+  // a provider that applies after this plugin's row — /adddir would then never
+  // register, silently. The tradeoff is that a composition with no `commands`
+  // service stays quiet (it is still waiting) instead of warning.
+  ctx.inject(['commands', 'directoryPicker'], (injected) => {
+    const commands = injected.get('commands') as CommandsServiceFace
+    const picker = injected.get('directoryPicker') as DirectoryPickerServiceFace
+    if (picker.capability().kind !== 'native') {
+      injected.logger.warn('dsh-codex-project: directoryPicker serves %s, not native; /adddir command not registered', picker.capability().kind)
+      return
+    }
     const adddir = defineAdddirCommand({
       resolveWorkspaceId: deps.resolveWorkspaceId,
-      picker: () => ctx.get('directoryPicker') as DirectoryPickerServiceFace | undefined,
+      picker: () => injected.get('directoryPicker') as DirectoryPickerServiceFace | undefined,
       store,
     })
-    ctx.effect(() => commands.register(adddir), 'dsh-codex-project: /adddir command')
-  } else {
-    ctx.logger.warn('dsh-codex-project: no commands service; /adddir command not registered')
-  }
+    injected.effect(() => commands.register(adddir), 'dsh-codex-project: /adddir command')
+  })
 
   // Route sandbox confine through the multi-root runner for recorded workspaces.
   const sandbox = ctx.get('sandbox')

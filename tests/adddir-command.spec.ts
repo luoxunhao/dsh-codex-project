@@ -75,6 +75,16 @@ describe('/adddir command', () => {
     expect(await store.load()).toMatchObject({ w1: { path: workspacePath, dirs: [dirA] } })
   })
 
+  it('auto-anchors a workspace with no record yet (/adddir works on a fresh workspace)', async () => {
+    const { deps, store } = makeDeps({ kind: 'native', value: dirA })
+    // Note: no store.anchor(...) before this — the bug this guards is /adddir
+    // failing with "no workspace <id>" on a workspace never managed via GUI PUT.
+
+    const result = await run(deps)
+    expect(result).toEqual({ kind: 'success', text: expect.stringContaining(dirA) })
+    expect(await store.load()).toMatchObject({ w1: { path: workspacePath, dirs: [dirA] } })
+  })
+
   it('does not write when the operator cancels the picker', async () => {
     const { deps, store } = makeDeps({ kind: 'native', value: null })
     await store.anchor('w1', workspacePath)

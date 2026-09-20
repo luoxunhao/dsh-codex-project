@@ -78,6 +78,32 @@ export class DirsStore {
   }
 
   /**
+   * Add ONE additional writable directory to a workspace, auto-anchoring the
+   * workspace when it has no record yet. Shared by the two single-dir entry
+   * points (the `/adddir` command and the `add_dir` model tool); the API's
+   * full-list PUT reaches the same end state through a separate `anchor` +
+   * `setDirs` pair (see dirs-api.ts) rather than calling this. Either way a
+   * first-time addition on a fresh workspace never fails with an
+   * unanchored-workspace error. An existing record keeps its path.
+   * @param workspaceId - the owning workspace.
+   * @param path - the canonical main workspace path (used only to anchor when the record is absent).
+   * @param dir - the additional writable directory to add (must exist; a duplicate is a no-op).
+   * @returns the updated record.
+   */
+  async addDir(workspaceId: string, path: string, dir: string): Promise<WorkspaceDirs> {
+    return this.enqueue(() => {
+      const records = loadWorkspaceDirs()
+      if (records[workspaceId] === undefined) {
+        records[workspaceId] = { path, dirs: [] }
+      }
+      const record = records[workspaceId]!
+      record.dirs = dedupeDirectionary([...record.dirs, dir])
+      writeWorkspaceDirs(records)
+      return { ...record }
+    })
+  }
+
+  /**
    * Anchor a registry workspace (id + canonical path) with the given dirs,
    * creating the record when absent. Idempotent: an existing record keeps
    * its dirs unless `dirs` is provided.

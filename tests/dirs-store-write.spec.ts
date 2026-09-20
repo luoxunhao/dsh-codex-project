@@ -14,6 +14,46 @@ import { join } from 'node:path'
 import { afterAll, describe, expect, it } from 'vitest'
 
 import { closeDirsDb, loadWorkspaceDirs, writeWorkspaceDirs } from '../src/dirs-config.ts'
+import { DirsStore } from '../src/dirs-store.ts'
+
+describe('DirsStore.addDir (the one "add a dir to a workspace" primitive)', () => {
+  const base = mkdtempSync(join(tmpdir(), 'dsh-adddir-store-'))
+  const workspacePath = join(base, 'ws')
+  const dirA = join(base, 'dir-a')
+  const dirB = join(base, 'dir-b')
+  const configPath = join(base, 'dirs.db')
+  const previousConfig = process.env.DSH_CODEX_PROJECT_CONFIG
+  const store = new DirsStore()
+
+  afterAll(() => {
+    if (previousConfig === undefined) delete process.env.DSH_CODEX_PROJECT_CONFIG
+    else process.env.DSH_CODEX_PROJECT_CONFIG = previousConfig
+    closeDirsDb()
+    rmSync(base, { recursive: true, force: true })
+  })
+
+  it('auto-anchors a workspace with no record yet (first addition creates it)', async () => {
+    process.env.DSH_CODEX_PROJECT_CONFIG = configPath
+    closeDirsDb()
+    expect(loadWorkspaceDirs()['w1']).toBeUndefined()
+
+    await store.addDir('w1', workspacePath, dirA)
+    expect(await store.load()).toMatchObject({ w1: { path: workspacePath, dirs: [dirA] } })
+  })
+
+  it('appends to an existing record without touching its path or earlier dirs', async () => {
+    process.env.DSH_CODEX_PROJECT_CONFIG = configPath
+    await store.addDir('w1', workspacePath, dirB)
+    expect(await store.load()).toMatchObject({ w1: { path: workspacePath, dirs: [dirA, dirB] } })
+  })
+
+  it('adding a duplicate is a no-op (idempotent)', async () => {
+    process.env.DSH_CODEX_PROJECT_CONFIG = configPath
+    await store.addDir('w1', workspacePath, dirA)
+    expect(await store.load()).toMatchObject({ w1: { path: workspacePath, dirs: [dirA, dirB] } })
+  })
+})
+
 
 describe('SQLite dirs persistence', () => {
   const base = mkdtempSync(join(tmpdir(), 'dsh-write-'))
