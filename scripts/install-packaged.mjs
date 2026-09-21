@@ -157,15 +157,23 @@ for (const profile of profiles) {
   const snapshot = { manifest: readFileSync(manifestPath, 'utf8'), lock: existsSync(lockPath) ? readFileSync(lockPath, 'utf8') : null }
 
   const entry = join(dir, 'node_modules', ...pkg.name.split('/'))
-  const declared = JSON.parse(readFileSync(manifestPath, 'utf8')).dependencies?.[pkg.name]
-  const detached = !declared && !existsIncludingBrokenLink(entry)
+  const profileManifest = JSON.parse(readFileSync(manifestPath, 'utf8'))
+  const declared = profileManifest.dependencies?.[pkg.name]
+  const bundled = (profileManifest.dsh?.profile?.bundles ?? []).includes(pkg.name)
+  const detached = !declared && !existsIncludingBrokenLink(entry) && !bundled
+  // dsh only appends the bundles entry when the dependency is new, so a profile
+  // whose bundle list was rewritten elsewhere must be detached fully first.
+  const why = declared?.startsWith('link:') ? declared
+    : isLinkIntoRepo(entry) ? 'node_modules entry points at the working tree'
+    : declared && !bundled ? 'declared but missing from dsh.profile.bundles'
+    : ''
 
   if (detached) {
     console.log('  nothing installed yet — will just add')
-  } else if (declared?.startsWith('link:') || isLinkIntoRepo(entry)) {
-    step(`detach (${declared ?? 'node_modules entry points at the working tree'})`)
+  } else if (why) {
+    step(`detach (${why})`)
     if (dryRun) {
-      console.log('  would remove, then unlink the leftover symlink')
+      console.log('  would remove, then unlink a leftover symlink')
     } else {
       const rm = run('dsh', ['plugin', '--profile', profile, 'remove', pkg.name], dir)
       if (rm.status !== 0) fail(`remove failed:\n${rm.out.slice(-2000)}`)
@@ -177,7 +185,7 @@ for (const profile of profiles) {
       }
     }
   } else {
-    console.log(`  already packaged: ${declared}`)
+    console.log(`  already packaged: ${declared ?? '(not declared)'}`)
   }
 
   if (dryRun) {
