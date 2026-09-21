@@ -59,6 +59,7 @@
     "typecheck": "tsc --noEmit",
     "bundle": "tsdown",
     "test": "vitest run",
+    "install:packaged": "node scripts/install-packaged.mjs",
     "proto:verify": "node scripts/proto-verify.mjs"
   },
   "license": "MIT",
