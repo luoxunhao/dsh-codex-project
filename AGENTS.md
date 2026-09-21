@@ -30,7 +30,7 @@ pnpm proto:verify       # 多根 runner 原型实证（Windows ACL，需先 buil
 ```
 
 - **产物**：`lib/index.js`（host）、`lib/runner.js`、`lib/fs.js`、`lib/client.js`（浏览器 bundle，CJS closure 工厂注册 id `dsh-codex-project`）。
-- **宿主基线**：`@deepseek-ai/dsh-*` peer 一律 `^0.1.6-alpha.2`（**2026-09-20 在 0.1.6-alpha.2 真机重验通过**，覆盖改过挂载面之后的那两条——`ctx.inject` 依赖表加了 `sessions`、`dsh.client.inject` 摘掉了承载包：右侧栏「项目文件夹」可开、目录列表走插件自有多根路由、文件预览与编辑态 CodeMirror 正常、「引用到对话」真能把引用插进输入框；明细见 README 基线表，其中**「重复点击同一文件会重读」一项仍未做真机实测**（只有 jsdom 用例守着）；本次安装是 `link:` 指向本地构建，npm 上只有 0.11.0，**发布版安装路径未覆盖**）；`@deepseek-ai/cordis` `^4.0.2`。**别写回 `^0.1.2-alpha.4` / `^0.1.5-rc.1`**——semver 普通范围不匹配预发布版本，会拒绝 0.1.6-alpha.x。
+- **宿主基线**：`@deepseek-ai/dsh-*` peer 一律 `^0.1.6-alpha.2`（**2026-09-20 在 0.1.6-alpha.2 真机重验通过**，覆盖改过挂载面之后的那两条——`ctx.inject` 依赖表加了 `sessions`、`dsh.client.inject` 摘掉了承载包：右侧栏「项目文件夹」可开、目录列表走插件自有多根路由、文件预览与编辑态 CodeMirror 正常、「引用到对话」真能把引用插进输入框；明细见 README 基线表，其中**「重复点击同一文件会重读」一项仍未做真机实测**（只有 jsdom 用例守着）；**2026-09-21 改用打包产物重装并真机通过**（`pnpm pack` → `dsh plugin --profile web add <绝对路径>.tgz`，node_modules 里是解出来的真实目录而不是 link：宿主 boot、右侧栏 tab、多根目录列表、宿主自带 viewer 全对。**从 npm registry 下载那条路仍未覆盖**——registry 上只有 0.11.0）；`@deepseek-ai/cordis` `^4.0.2`。**别写回 `^0.1.2-alpha.4` / `^0.1.5-rc.1`**——semver 普通范围不匹配预发布版本，会拒绝 0.1.6-alpha.x。
 - **`dsh-client-ui-primitives` 不声明 `dependencies`**：其 bundle 裸 import `shiki` / `@shikijs/langs/*` / `anser` / `clsx` / `katex` / `mdast-util-*` / `micromark-*` / `diff` / `simple-icons`（0.1.6 起了 DiffBlock 又加进 `diff`+`simple-icons`）。这组包**必须留在 devDependencies**（浏览器用例的 resolve 依赖它们），不得"清理"掉；升 primitives 版本后先 `grep -ohE "from ['\"][^./]" lib/…/dsh-client-ui-primitives/lib/index.js` 对一遍清单。
 - **`tsconfig.build.json` 的 `rootDir` 必须是 `src`**：设成 `.` 会让声明落到 `lib/types/src/*`，与 package.json 的 `types` 子路径错位，消费者拿不到类型。
 - **client 白名单**：`react`、`react/jsx-runtime`、`react-dom`、`react-dom/client`、`cordis`、`@deepseek-ai/dsh-client-ui-slots`、`@deepseek-ai/dsh-client-ui-primitives`。纯度门插件在 resolve 阶段拒绝任何其他 `@deepseek-ai/*` value import 与 node 内置。
@@ -46,6 +46,7 @@ pnpm proto:verify       # 多根 runner 原型实证（Windows ACL，需先 buil
 4. **热加载**：client 改动浏览器硬刷新即可；**host 改动（路由、seam、fs、runner）需重启 `dsh web`**。
 5. `pnpm plugin add` 报 `ERR_PNPM_IGNORED_BUILDS` 时，把 `<profile>/pnpm-workspace.yaml` 的 `allowBuilds` 占位符改成布尔值后重跑。
 6. **脚本化真机验证**：`dsh web --no-open --port 0` 让 OS 选端口，stdout 打印 `dsh web: http://127.0.0.1:<port>/?token=…`；client 改动 `pnpm build` 后重新 navigate 该 URL 即生效（host 改动要重启）。工作区行的「…」菜单要先给行加上 `menuOpen`（点 `button[aria-label*="操作"]`）才会触发插件的 MutationObserver 注入。
+7. **从 `link:` 切到打包产物，要先把 link 拆干净**（2026-09-21 踩过）：直接 `add <仓库>/x.tgz` 盖在既有 link 上有两个坑——① pnpm 只改 package.json 的 specifier，lockfile 里仍是 `version: link:E:\…`，node_modules 仍是软链，装完等于没装（本次就是「+2 -3、Done」但产物没动）；② `dsh plugin --profile web remove` 会清掉依赖与 bundles 行、**却把软链留在盘上**，残留链接指向 E: 上的工作树，下一次 `add` 会顺着它跨盘建软链并报 `ERR_PNPM_EPERM`。所以顺序是 `remove` → 手工 `rm node_modules/@luoxunhao/dsh-codex-project`（删链接本身，别碰目标）→ `add <abs>.tgz`。装完 profile 依赖是 `file:<绝对路径>.tgz`：**tarball 删了 profile 就装不回来**，得留在稳定路径。
 
 ---
 
