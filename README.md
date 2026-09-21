@@ -243,6 +243,7 @@ client 改动浏览器硬刷新即可；host 改动（路由、seam、fs、runne
 | 报 `Ignored build scripts` | pnpm 拦截构建脚本。在 profile 目录下跑 `pnpm approve-builds --all`。 |
 | 报 `minimum release age` | 版本发布不足 24 小时。等 24h 或重跑一次。 |
 | 报「找不到 profile 目录」 | 先跑一次 `dsh web`，让它初始化 profile。 |
+| **装上之后 `dsh` 直接起不来** | 报错一定是 `plugin tree failed to load: failed to import loader entry codex-project…`（或 `codex-project-fs`），后面紧跟原因 —— 通常是宿主版本不在 `^0.1.6-alpha.2` 这条线上（缺我们 import 的导出），或 Node < 22.5（没有 `node:sqlite`）。**一条命令即可恢复启动**：`dsh plugin --profile web remove @luoxunhao/dsh-codex-project`，然后对齐版本再装。这类失败发生在启动期、不会留下半装状态。（本插件不用条件挂载来"降级绕过"，就是为了让这种不兼容报出来而不是被藏起来。） |
 | 「项目文件夹」tab 不出现 | 多半是 client 根本没进模块图：看 `dsh web` 启动日志有没有 `client-modules: ... resolves from multiple active Loader sources`（用 `dev.patch.yml` 的两条 `file://` 行挂载就会触发，见上方「本地开发」）。改用 `dsh plugin --profile web add` 挂载。原生侧边栏（ui-sidebar-right）是 0.1.6 web 组合的默认装配，缺失即宿主版本不对。 |
 | Windows 下终端/runner 异常 | 确认 `@deepseek-ai/dsh-sandbox-windows-acl` 已正确安装（koffi 需构建脚本）。 |
 
