@@ -93,6 +93,34 @@ describe('dirs API', () => {
     expect((set.body as { dirs: string[] }).dirs).toEqual([rootB])
   })
 
+  it('sets, reads and clears the display primary', async () => {
+    process.env.DSH_CODEX_PROJECT_CONFIG = configPath
+    await store.anchor('w-known', rootA)
+    const set = await api('PUT', '/codex-project/api/dirs', { workspaceId: 'w-known', dirs: [rootB], primary: rootB })
+    expect(set.status).toBe(200)
+    expect((set.body as { primary?: string }).primary).toBe(rootB)
+    expect(loadWorkspaceDirs()['w-known']?.primary).toBe(rootB)
+
+    const listed = await api('GET', '/codex-project/api/dirs?workspaceId=w-known')
+    expect((listed.body as { primary?: string }).primary).toBe(rootB)
+
+    // The PUT replaces the record, so a body without `primary` clears the marker.
+    const cleared = await api('PUT', '/codex-project/api/dirs', { workspaceId: 'w-known', dirs: [rootB] })
+    expect((cleared.body as { primary?: string }).primary).toBeUndefined()
+    expect(loadWorkspaceDirs()['w-known']?.primary).toBeUndefined()
+  })
+
+  it('rejects a primary that is not one of the dirs with 400', async () => {
+    process.env.DSH_CODEX_PROJECT_CONFIG = configPath
+    await store.anchor('w-known', rootA)
+    // The anchor is not an additional dir: claiming 主要 from it is a clear, not a write.
+    const notADir = await api('PUT', '/codex-project/api/dirs', { workspaceId: 'w-known', dirs: [rootB], primary: rootA })
+    expect(notADir.status).toBe(400)
+    expect(loadWorkspaceDirs()['w-known']?.primary).toBeUndefined()
+    const wrongType = await api('PUT', '/codex-project/api/dirs', { workspaceId: 'w-known', dirs: [rootB], primary: 5 })
+    expect(wrongType.status).toBe(400)
+  })
+
   it('reads a registry workspace WITHOUT a record as an empty list (200)', async () => {
     process.env.DSH_CODEX_PROJECT_CONFIG = configPath
     const listed = await api('GET', '/codex-project/api/dirs?workspaceId=w-add')
@@ -201,6 +229,24 @@ describe('project folder API (/project and /list)', () => {
     const project = (res.body as { project: { dirs: string[]; missingDirs: string[] } }).project
     expect(project.dirs).toEqual([rootB])
     expect(project.missingDirs).toEqual([gone])
+  })
+
+  it('reports the surviving display primary', async () => {
+    process.env.DSH_CODEX_PROJECT_CONFIG = configPath
+    await store.anchor('w-known', rootA)
+    await api('PUT', '/codex-project/api/dirs', { workspaceId: 'w-known', dirs: [rootB, gone], primary: rootB })
+    const res = await api('GET', `/codex-project/api/project?cwd=${encodeURIComponent(rootA)}`)
+    expect((res.body as { project: { primary?: string } }).project.primary).toBe(rootB)
+  })
+
+  it('drops a primary whose directory vanished, keeping the anchor first', async () => {
+    process.env.DSH_CODEX_PROJECT_CONFIG = configPath
+    await store.anchor('w-known', rootA)
+    await api('PUT', '/codex-project/api/dirs', { workspaceId: 'w-known', dirs: [rootB, gone], primary: gone })
+    const res = await api('GET', `/codex-project/api/project?cwd=${encodeURIComponent(rootA)}`)
+    const project = (res.body as { project: { path: string; primary?: string } }).project
+    expect(project.path).toBe(rootA)
+    expect(project.primary).toBeUndefined()
   })
 
   it('requires the cwd query parameter', async () => {

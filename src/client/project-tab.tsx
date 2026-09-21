@@ -51,7 +51,7 @@ import {
 import type { ProjectEntry, ProjectListing, ProjectSearchResult, ProjectView, SpacesApi, UploadFile } from './api.ts'
 import type { ClientRuntimeContext, SidebarTabScope } from './context.ts'
 import { insertFileReference } from './file-reference.ts'
-import { basename, relativePath, resolvePath } from './paths.ts'
+import { basename, relativePath, resolvePath, samePath } from './paths.ts'
 import { viewerKindForPath } from './viewer.ts'
 
 /** The tab's render props: the client ctx, the dirs API, the session scope, and
@@ -67,7 +67,28 @@ export interface ProjectTabProps {
 }
 
 /** One top-level project root. */
-type RootRow = { path: string; kind: 'main' | 'shared' | 'missing' }
+type RootRow = { path: string; kind: 'main' | 'shared' | 'missing'; primary: boolean }
+
+/**
+ * The root rows in display order: the dialog's 主要 choice leads, then the
+ * anchor, then the remaining shared dirs and the stale ones. Purely a display
+ * order — the anchor still owns matching and the fence.
+ * @param project - the resolved project view.
+ */
+function rootRows(project: ProjectView): RootRow[] {
+  const primary = project.primary
+  const rows: RootRow[] = [
+    { path: project.path, kind: 'main', primary: primary === undefined },
+    ...project.dirs.map(path => ({
+      path,
+      kind: 'shared' as const,
+      primary: primary !== undefined && samePath(path, primary),
+    })),
+    ...project.missingDirs.map(path => ({ path, kind: 'missing' as const, primary: false })),
+  ]
+  const leading = rows.findIndex(row => row.primary)
+  return leading > 0 ? [rows[leading]!, ...rows.slice(0, leading), ...rows.slice(leading + 1)] : rows
+}
 
 /** How long the row's "已复制" label stays after a successful copy. */
 const COPIED_MS = 1200
@@ -325,12 +346,8 @@ export function ProjectTab(props: ProjectTabProps): ReactNode {
     // With no shared config, fall back to the session's own working directory
     // as a single root — the tree always has something to show.
     const roots: RootRow[] = project === null
-      ? (cwd === undefined || cwd === '' ? [] : [{ path: cwd, kind: 'main' as const }])
-      : [
-        { path: project.path, kind: 'main' },
-        ...project.dirs.map(path => ({ path, kind: 'shared' as const })),
-        ...project.missingDirs.map(path => ({ path, kind: 'missing' as const })),
-      ]
+      ? (cwd === undefined || cwd === '' ? [] : [{ path: cwd, kind: 'main' as const, primary: true }])
+      : rootRows(project)
     body = (
       <div className={`dsh-cxp-tab-tree${refreshing ? ' dsh-cxp-tree-flash' : ''}`}>
         {roots.length === 0 ? (
@@ -339,7 +356,7 @@ export function ProjectTab(props: ProjectTabProps): ReactNode {
           if (root.kind === 'missing') {
             return <MissingRow key={root.path} path={root.path} />
           }
-          const name = root.kind === 'main' && project !== null ? `${basename(root.path)} (主)` : basename(root.path)
+          const name = root.primary && project !== null ? `${basename(root.path)} (主)` : basename(root.path)
           return (
             <DirNode
               key={root.path}

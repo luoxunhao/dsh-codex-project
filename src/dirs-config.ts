@@ -1,8 +1,9 @@
 /**
  * dsh-codex-project configuration access: the additional-writable-dir model.
- * One workspace owns a record `{ path, dirs }` — `path` is the canonical main
- * workspace directory (the matching anchor the runner also uses), `dirs` are
- * the additional writable directories the workspace's sessions may read/write.
+ * One workspace owns a record `{ path, dirs, primary? }` — `path` is the
+ * canonical main workspace directory (the matching anchor the runner also
+ * uses), `dirs` are the additional writable directories the workspace's
+ * sessions may read/write, `primary` is the display-first root among them.
  * The record set is the plugin's ONLY persisted state; sessions whose cwd is
  * outside every record, or whose owning record has no dirs, keep the core
  * single-workspace behavior.
@@ -27,7 +28,9 @@
  * record; the writable root set is `[path, ...surviving dirs]`. A configured
  * dir that vanished narrows the set (a dead directory is physically
  * unwritable), never throwing and never poisoning unrelated sessions or
- * records.
+ * records. The optional `primary` reorders only the DISPLAY of those roots (the
+ * dialog's 源文件夹 list and the 项目文件夹 tab) — it never changes the anchor,
+ * the writable set, or the `@` relative base.
  * @module dsh-codex-project/dirs-config
  */
 
@@ -42,6 +45,12 @@ export interface WorkspaceDirs {
   path: string
   /** Additional writable directories (absolute, may cross drives). */
   dirs: string[]
+  /**
+   * The DISPLAY primary root: one of `dirs`, shown first and labelled 主要 in
+   * the dialog and the 项目文件夹 tab. Presentation only — the anchor stays
+   * `path` (matching, the fence and the `@` relative base ignore this).
+   */
+  primary?: string
 }
 
 /** A resolved match: the owning workspace + its writable root split. */
@@ -51,6 +60,8 @@ export interface WorkspaceMatch {
   roots: string[]
   /** Configured dirs that no longer exist (skipped, never failing). */
   missingDirs: string[]
+  /** The surviving display primary (a canonical member of `roots`), if any. */
+  primary?: string
 }
 
 /** The default data file location (`~/.dsh-codex-project/dirs.db`). */
@@ -66,15 +77,26 @@ const SCHEMA = `
   CREATE TABLE IF NOT EXISTS workspaces (
     workspace_id TEXT PRIMARY KEY,
     path         TEXT NOT NULL,
-    dirs_json    TEXT NOT NULL
+    dirs_json    TEXT NOT NULL,
+    primary_dir  TEXT NOT NULL DEFAULT ''
   ) STRICT;
 `
+
+/** The column added after 0.13 — old databases are ALTERed on open. */
+const PRIMARY_COLUMN = 'primary_dir'
 
 // A lazily-opened handle keyed by the resolved path. Tests swap
 // `DSH_CODEX_PROJECT_CONFIG` between cases (and delete each temp dir), so the
 // handle is closed and reopened whenever the resolved path changes.
 let connectionPath: string | undefined
 let connection: DatabaseSync | undefined
+
+/** Add `primary_dir` to a table created before it existed (SQLite: cheap, constant default). */
+function ensurePrimaryColumn(db: DatabaseSync): void {
+  const columns = db.prepare('PRAGMA table_info(workspaces)').all() as Array<{ name: string }>
+  if (columns.some(column => column.name === PRIMARY_COLUMN)) return
+  db.exec(`ALTER TABLE workspaces ADD COLUMN ${PRIMARY_COLUMN} TEXT NOT NULL DEFAULT ''`)
+}
 
 /** The open handle for the current DB path (creating parent/schema on first use). */
 function getConnection(): DatabaseSync {
@@ -85,6 +107,7 @@ function getConnection(): DatabaseSync {
   const next = new DatabaseSync(path)
   next.exec('PRAGMA busy_timeout = 5000')
   next.exec(SCHEMA)
+  ensurePrimaryColumn(next)
   connection = next
   connectionPath = path
   return next
@@ -116,10 +139,11 @@ export function isDirsDbOpen(): boolean {
  */
 export function loadWorkspaceDirs(): Record<string, WorkspaceDirs> {
   const db = getConnection()
-  const rows = db.prepare('SELECT workspace_id, path, dirs_json FROM workspaces').all() as Array<{
+  const rows = db.prepare('SELECT workspace_id, path, dirs_json, primary_dir FROM workspaces').all() as Array<{
     workspace_id: string
     path: string
     dirs_json: string
+    primary_dir: string
   }>
   const records: Record<string, WorkspaceDirs> = {}
   for (const row of rows) {
@@ -135,7 +159,11 @@ export function loadWorkspaceDirs(): Record<string, WorkspaceDirs> {
     if (!Array.isArray(dirs) || dirs.some(dir => typeof dir !== 'string' || dir === '')) {
       throw new Error(`workspace ${row.workspace_id} dirs must be an array of non-empty strings`)
     }
-    records[row.workspace_id] = { path: row.path, dirs }
+    records[row.workspace_id] = {
+      path: row.path,
+      dirs,
+      ...(row.primary_dir === '' ? {} : { primary: row.primary_dir }),
+    }
   }
   return records
 }
@@ -153,12 +181,13 @@ export function writeWorkspaceDirs(records: Record<string, WorkspaceDirs>): void
     workspace_id,
     path: record.path,
     dirs_json: JSON.stringify(record.dirs),
+    primary_dir: record.primary ?? '',
   }))
   db.exec('BEGIN IMMEDIATE')
   try {
     db.prepare('DELETE FROM workspaces').run()
-    const insert = db.prepare('INSERT INTO workspaces (workspace_id, path, dirs_json) VALUES (?, ?, ?)')
-    for (const entry of entries) insert.run(entry.workspace_id, entry.path, entry.dirs_json)
+    const insert = db.prepare('INSERT INTO workspaces (workspace_id, path, dirs_json, primary_dir) VALUES (?, ?, ?, ?)')
+    for (const entry of entries) insert.run(entry.workspace_id, entry.path, entry.dirs_json, entry.primary_dir)
     db.exec('COMMIT')
   } catch (error) {
     try {
@@ -228,7 +257,13 @@ export function matchingWorkspace(
       if (canonical === undefined) missingDirs.push(dir)
       else roots.push(canonical)
     }
-    return { workspaceId, roots: [canonicalWorkspace, ...roots], missingDirs }
+    const configured = record.primary
+    const primary = configured === undefined
+      ? undefined
+      // A primary that vanished (or was removed from `dirs`) is ignored: the
+      // anchor keeps the leading slot rather than pointing at nothing.
+      : roots.find(root => root === tryCanonicalDirectory(configured))
+    return { workspaceId, roots: [canonicalWorkspace, ...roots], missingDirs, ...(primary === undefined ? {} : { primary }) }
   }
   return undefined
 }

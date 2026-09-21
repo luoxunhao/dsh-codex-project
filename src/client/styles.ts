@@ -10,10 +10,21 @@
 const TAG_ID = 'dsh-codex-project'
 
 const CSS = `
+/* --- subtle fills (shared by the dialog and the tab) ---
+   On the real host light theme --dsw-alias-bg-layer-1/2/base are ALL #fff, so
+   a "layer" token cannot express a visible step above the background — these
+   mix off the label color instead (light themes get a shade, dark themes a
+   lift). Scoped to the plugin's own attribute roots, like everything here. */
+[data-dsh-codex-project-dialog],
+[data-dsh-codex-project-tab] {
+  --dsh-cxp-fill: color-mix(in srgb, var(--dsw-alias-label-primary, #808080) 6%, transparent);
+  --dsh-cxp-fill-strong: color-mix(in srgb, var(--dsw-alias-label-primary, #808080) 11%, transparent);
+}
+
 /* --- native workspace 「…」 menu injected rows ---
    Mirrors ui-primitives Menu.module.css .item (min-h 40 / pad 8x10 /
    r10 / 14/22 / gap 8 / interactive-bg-hover) so 打开本地目录 and
-   管理工作区 render pixel-identical to the native 重命名 row. */
+   编辑工作区 render pixel-identical to the native 重命名 row. */
 [data-dsh-codex-project-menu-actions] .dsh-cxp-menu-item {
   display: flex;
   align-items: center;
@@ -50,7 +61,9 @@ const CSS = `
   white-space: nowrap;
 }
 
-/* --- 管理工作区 dialog --- */
+/* --- 编辑工作区 dialog (mirrors the host's own workspace editor: roomy
+   padding, a 源文件夹 section whose header carries 添加, one light rounded row
+   per folder with the 主要 pill and trailing text/icon actions) --- */
 [data-dsh-codex-project-dialog] .dsh-cxp-dialog-overlay {
   position: fixed;
   inset: 0;
@@ -61,26 +74,25 @@ const CSS = `
   background: rgba(0, 0, 0, 0.35);
 }
 [data-dsh-codex-project-dialog] .dsh-cxp-dialog {
-  width: min(440px, calc(100vw - 48px));
+  width: min(520px, calc(100vw - 48px));
   max-height: min(70vh, 560px);
   display: flex;
   flex-direction: column;
-  border-radius: 12px;
+  border-radius: 14px;
   border: 1px solid var(--dsw-alias-border-l2, #3a3a3a);
   background: var(--dsw-alias-bg-base);
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.32);
   overflow: hidden;
 }
 [data-dsh-codex-project-dialog] .dsh-cxp-dialog-header {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 12px 14px;
-  border-bottom: 1px solid var(--dsw-alias-border-l1);
+  padding: 14px 12px 0 20px;
   flex: none;
 }
 [data-dsh-codex-project-dialog] .dsh-cxp-dialog-title {
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 600;
   color: var(--dsw-alias-label-primary);
   overflow: hidden;
@@ -91,24 +103,54 @@ const CSS = `
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: 12px 14px;
+  padding: 10px 20px 18px;
   display: flex;
   flex-direction: column;
   gap: 8px;
 }
+[data-dsh-codex-project-dialog] .dsh-cxp-dialog-section-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+}
 [data-dsh-codex-project-dialog] .dsh-cxp-dialog-section {
-  font-size: 12.5px;
+  font-size: 13px;
   font-weight: 600;
+  color: var(--dsw-alias-label-primary);
+}
+[data-dsh-codex-project-dialog] .dsh-cxp-add-btn {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 3px 8px;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
   color: var(--dsw-alias-label-secondary);
-  margin-bottom: 2px;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+[data-dsh-codex-project-dialog] .dsh-cxp-add-btn:hover:not(:disabled) {
+  background: var(--dsw-alias-interactive-bg-hover);
+  color: var(--dsw-alias-label-primary);
+}
+[data-dsh-codex-project-dialog] .dsh-cxp-add-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
 }
 [data-dsh-codex-project-dialog] .dsh-cxp-dialog-row {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 6px 8px;
-  border-radius: 8px;
-  background: var(--dsw-alias-bg-layer-2, rgba(128,128,128,0.08));
+  gap: 8px;
+  padding: 10px 12px;
+  /* The portal'd dialog sits outside the host's border-box reset, so this is
+     the CONTENT height: 24 + 20 padding = the 44px a row with action buttons
+     already reaches. Without it the 主要 row (no buttons) is 6px shorter. */
+  min-height: 24px;
+  border-radius: 10px;
+  background: var(--dsh-cxp-fill);
   min-width: 0;
 }
 [data-dsh-codex-project-dialog] .dsh-cxp-dialog-empty {
@@ -122,30 +164,57 @@ const CSS = `
   color: var(--dsw-alias-label-secondary);
   opacity: 0.8;
   line-height: 1.5;
+  margin-top: 2px;
 }
 [data-dsh-codex-project-dialog] .dsh-cxp-panel-error {
   font-size: 12.5px;
   color: #e06c6c;
   word-break: break-all;
 }
+[data-dsh-codex-project-dialog] .dsh-cxp-root-icon {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  color: var(--dsw-alias-label-tertiary);
+}
 [data-dsh-codex-project-dialog] .dsh-cxp-root-label {
-  font-size: 12.5px;
+  font-size: 13.5px;
   font-weight: 500;
   color: var(--dsw-alias-label-primary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  flex: none;
-}
-[data-dsh-codex-project-dialog] .dsh-cxp-root-path {
-  font-size: 11.5px;
-  color: var(--dsw-alias-label-secondary);
-  opacity: 0.8;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
   min-width: 0;
-  flex: 1;
+}
+[data-dsh-codex-project-dialog] .dsh-cxp-root-badge {
+  flex: none;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--dsw-alias-focus-ring, #4d8df0) 14%, transparent);
+  color: var(--dsw-alias-focus-ring, #4d8df0);
+  font-size: 11px;
+  line-height: 16px;
+}
+[data-dsh-codex-project-dialog] .dsh-cxp-text-btn {
+  flex: none;
+  padding: 3px 6px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 12.5px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+[data-dsh-codex-project-dialog] .dsh-cxp-text-btn:hover:not(:disabled) {
+  background: var(--dsw-alias-interactive-bg-hover);
+  color: var(--dsw-alias-label-primary);
+}
+[data-dsh-codex-project-dialog] .dsh-cxp-text-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
 }
 [data-dsh-codex-project-dialog] .dsh-cxp-icon-btn {
   flex: none;
@@ -162,7 +231,7 @@ const CSS = `
   cursor: pointer;
 }
 [data-dsh-codex-project-dialog] .dsh-cxp-icon-btn:hover:not(:disabled) {
-  background: var(--dsw-alias-bg-layer-2, rgba(128,128,128,0.12));
+  background: var(--dsh-cxp-fill-strong);
   color: var(--dsw-alias-label-primary);
 }
 [data-dsh-codex-project-dialog] .dsh-cxp-icon-btn:disabled {
@@ -170,7 +239,7 @@ const CSS = `
   cursor: default;
 }
 
-/* --- 管理工作区 dialog: in-page folder picker (选择目录) --- */
+/* --- 编辑工作区 dialog: in-page folder picker (选择目录) --- */
 [data-dsh-codex-project-dialog] .dsh-cxp-folder-picker {
   display: flex;
   flex-direction: column;
@@ -184,7 +253,7 @@ const CSS = `
   gap: 6px;
   padding: 6px 8px;
   border-radius: 8px;
-  background: var(--dsw-alias-bg-layer-2, rgba(128, 128, 128, 0.08));
+  background: var(--dsh-cxp-fill);
   flex: none;
   min-width: 0;
 }
@@ -209,7 +278,7 @@ const CSS = `
   padding: 0 8px;
   border: 1px solid transparent;
   border-radius: 7px;
-  background: var(--dsw-alias-bg-layer-2, rgba(128, 128, 128, 0.08));
+  background: var(--dsh-cxp-fill);
   color: var(--dsw-alias-label-primary);
   font-size: 12px;
   font-family: var(--dsw-font-family-mono, ui-monospace, SFMono-Regular, Consolas, monospace);
@@ -317,7 +386,7 @@ const CSS = `
   padding: 0 8px;
   border: 1px solid transparent;
   border-radius: 7px;
-  background: var(--dsw-alias-bg-layer-2, rgba(128, 128, 128, 0.08));
+  background: var(--dsh-cxp-fill);
   color: var(--dsw-alias-label-tertiary);
 }
 [data-dsh-codex-project-tab] .dsh-cxp-files-search:focus-within {
@@ -422,7 +491,7 @@ const CSS = `
   cursor: pointer;
 }
 [data-dsh-codex-project-tab] .dsh-cxp-tab-icon-btn:hover {
-  background: var(--dsw-alias-bg-layer-2, rgba(128, 128, 128, 0.12));
+  background: var(--dsh-cxp-fill-strong);
   color: var(--dsw-alias-label-primary);
 }
 [data-dsh-codex-project-tab] .dsh-cxp-tab-tree {
@@ -511,7 +580,7 @@ const CSS = `
   padding: 0 8px;
   border: 1px solid transparent;
   border-radius: 7px;
-  background: var(--dsw-alias-bg-layer-2, rgba(128, 128, 128, 0.08));
+  background: var(--dsh-cxp-fill);
   color: var(--dsw-alias-label-primary);
   font-size: 12px;
   outline: none;
@@ -608,7 +677,7 @@ const CSS = `
   cursor: pointer;
 }
 [data-dsh-codex-project-tab] .dsh-cxp-preview-open:hover {
-  background: var(--dsw-alias-bg-layer-2, rgba(128, 128, 128, 0.12));
+  background: var(--dsh-cxp-fill-strong);
   color: var(--dsw-alias-label-primary);
 }
 [data-dsh-codex-project-tab] .dsh-cxp-preview-note {
@@ -683,7 +752,7 @@ const CSS = `
   cursor: pointer;
 }
 [data-dsh-codex-project-tab] .dsh-cxp-preview-download:hover {
-  background: var(--dsw-alias-bg-layer-2, rgba(128, 128, 128, 0.16));
+  background: var(--dsh-cxp-fill-strong);
 }
 
 /* --- inline text editor (CodeMirror + preview modes) --- */
@@ -720,7 +789,7 @@ const CSS = `
   gap: 2px;
   padding: 2px;
   border-radius: 7px;
-  background: var(--dsw-alias-bg-layer-2, rgba(128, 128, 128, 0.1));
+  background: var(--dsh-cxp-fill-strong);
 }
 [data-dsh-codex-project-tab] .dsh-cxp-preview-mode-toggle button {
   padding: 2px 10px;

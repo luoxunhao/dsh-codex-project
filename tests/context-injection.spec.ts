@@ -61,7 +61,11 @@ const rootB = join(dir, 'root-b')
 const elsewhere = join(dir, 'elsewhere')
 const configPath = join(dir, 'dirs.json')
 
-const record = (path: string, dirs: string[]): WorkspaceDirs => ({ path, dirs })
+const record = (path: string, dirs: string[], primary?: string): WorkspaceDirs => ({
+  path,
+  dirs,
+  ...(primary === undefined ? {} : { primary }),
+})
 
 function writeConfig(workspaces: Record<string, WorkspaceDirs>) {
   seedDirs(configPath, workspaces)
@@ -105,19 +109,34 @@ describe('composeWorkspaceContextText', () => {
     expect(text).not.toContain('missing')
   })
 
-  it('notes the additional dirs share the main workspace permission', () => {
-    // The reminder carries a permission hint: the additional dirs are governed
-    // by the same workspace-write boundary as the main workspace. It equates
-    // the additional dirs' permission with the main root's — it does NOT claim
-    // elevation beyond that boundary.
+  it('notes every listed dir shares the session workspace permission', () => {
+    // The reminder carries a permission hint that must NOT depend on which line
+    // leads: every dir sits inside the same workspace-write boundary. It
+    // equates the listed dirs' permission with the session root's — it does NOT
+    // claim elevation beyond that boundary.
     const text = composeWorkspaceContextText('w1', record(rootA, [rootB]), rootA)
-    expect(text).toContain('same permissions as the main workspace')
+    expect(text).toContain('same permissions as the session workspace')
+    expect(text).not.toContain('the main workspace')
     // Never over-claims: no read/write on arbitrary files, no full/unrestricted
     // access, and no claim that the extra dir is the workspace root.
     expect(text).not.toContain('读写权限')
     expect(text).not.toContain('可读写')
     expect(text).not.toContain('unrestricted')
     expect(text).not.toContain('full access')
+  })
+
+  it('leads the list with the primary dir and marks it', () => {
+    const text = composeWorkspaceContextText('w1', record(rootA, [rootB], rootB), rootA)
+    const lines = text.split('\n').filter(line => line.startsWith('- '))
+    expect(lines).toEqual([`- ${rootB} (primary workspace)`, `- ${rootA} (current session workspace)`])
+  })
+
+  it('drops a primary whose directory vanished instead of leading with it', () => {
+    const vanished = join(dir, 'vanished-primary')
+    const text = composeWorkspaceContextText('w1', record(rootA, [vanished, rootB], vanished), rootA)
+    const lines = text.split('\n').filter(line => line.startsWith('- '))
+    expect(lines).toEqual([`- ${rootA} (current session workspace)`, `- ${rootB}`])
+    expect(text).not.toContain('primary workspace')
   })
 
   it('never embeds file contents (AGENTS.md summaries are out of scope)', () => {
@@ -283,6 +302,21 @@ describe('foldWorkspaceContext', () => {
     expect(folded.messages).toHaveLength(2)
     const text = (folded.messages[1]!.content[0] as { type: 'text'; text: string }).text
     expect(text).toContain(rootB)
+  })
+
+  it('re-injects when only the 主要 choice changed', () => {
+    // Same directory set, different primary: the text leads with another root,
+    // so the model is out of date and the reminder folds again.
+    const oldText = composeWorkspaceContextText('w1', record(rootA, [rootB]), rootA)
+    writeConfig({ w1: record(rootA, [rootB], rootB) })
+    const user = message('hello')
+    const session = fakeSession(rootA, [0], [userMessageEvent(oldText)])
+    const folded = foldWorkspaceContext(enter(user), [user], session)
+    expect(folded.kind).toBe('enter')
+    if (folded.kind !== 'enter') return
+    expect(folded.messages).toHaveLength(2)
+    const text = (folded.messages[1]!.content[0] as { type: 'text'; text: string }).text
+    expect(text).toContain(`- ${rootB} (primary workspace)`)
   })
 
   it('does not fold for a record without dirs (only multiple-dir records apply)', () => {

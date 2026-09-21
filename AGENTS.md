@@ -16,6 +16,7 @@
 - **传进组件的 runtime ctx 必须显式合成**：cordis 给插件的 `ctx` 是代理，**声明的 `inject` 列之外、又非内置面的服务属性一律读成 `undefined`**——`ctx.sessions` 正是如此（`insertFileReference` 只写 `ctx.sessions?.scope(...)`，拿到 undefined 就静默 return，「引用到对话」不报错也不干活）。所以别把 `ctx` 用 `as never` 塞给 `ClientRuntimeContext`：在 `ctx.inject` 回调里用真正持有的服务拼一张 `{ get, sessions }` 再往下传（见 `src/client/index.tsx`），类型检查才继续在干活。
 - **文件预览优先复用宿主自带 viewer**：树里点文件 → `tab.actions.openResource(sessionFileAddress(sessionId, path))`，地址 `dsh-resource://file/session/<id>/<绝对路径>`。宿主的 `workspaceFiles.read/readBytes/readAll/stat` **不 confine 到会话根**（只有 `list` confine），所以工作区外、跨盘的文件在原生 viewer 里就能读（2026-09-21 真机：JSON / markdown / jpg / PDF，明细见 README 基线表）。插件自有的 `codex-project-file` page 只留宿主给不了的两件事：**编辑写回**（右键「编辑」→ `mode:'edit'`，走插件 `/write` 的多根 fence）和**无扩展名文件的下载**。两个原生 tab 仍不声明 `patterns`、只按 kind 打开，绝不与产品自带的 `dsh-resource://file/**` 抢认领。
 - **fence 只改一处**：所有项目文件操作路由共用 `dirs-api.ts` 的 `fenceFor`；不要另写一份 roots 推导（否则三处漂移）。
+- **「设为主要」只改"谁领头、谁被称作主"**：`primary` 影响弹窗列表、「项目文件夹」根行和上下文提醒的**顺序与标注**（提醒文本是"集合 + 主要"的纯函数，改主要会在下一轮重新折叠一次），但**绝不能**去改记录的 `path`——`matchingWorkspace` 拿 `path` 等值匹配会话 cwd，改了 path 就等于让这个工作区整体失配（tab、fence、提醒一起失效）。`fenceFor` / `@` 相对基准同样忽略 `primary`：它既不放也不收权限。宿主侧的「工作区名称/图标/颜色/归档」也不要做：那些是 DSH 原生工作区的属性，插件存了也不会被原生列表读到。
 
 ---
 
@@ -23,7 +24,7 @@
 
 ```bash
 pnpm typecheck          # tsc --noEmit
-pnpm test               # vitest run（18 个文件 / 225 用例）
+pnpm test               # vitest run（18 个文件 / 234 用例）
 pnpm build              # tsc(types) + tsdown（host ESM + client CJS + runner + fs）
 pnpm proto:verify       # 多根 runner 原型实证（Windows ACL，需先 build）
 ```
@@ -44,6 +45,7 @@ pnpm proto:verify       # 多根 runner 原型实证（Windows ACL，需先 buil
 3. **`dev.patch.yml`（file:// 两行）在 0.1.6 会被拒**：`client-modules` 现在按**包名**归并 Loader 源，`file:///…/lib/index.js` 与 `file:///…/lib/fs.js` 同属一个 package.json → 直接报 `package … resolves from multiple active Loader sources; remove one entry`，插件 client 进不了模块图（侧边栏不出现）。用包名的 `cordis.patch.yml` 没这个问题。要免 install 挂载就别再用两行 file://。该文件里的行现已**全部注释掉**（只留「为什么不能用」的记录）——注意 `fs-sandbox: disabled` 那行也不能单独生效：禁了核心 fs 提供者又不挂插件自己的，宿主会完全没有 fs 提供者。
 4. **热加载**：client 改动浏览器硬刷新即可；**host 改动（路由、seam、fs、runner）需重启 `dsh web`**。
 5. `pnpm plugin add` 报 `ERR_PNPM_IGNORED_BUILDS` 时，把 `<profile>/pnpm-workspace.yaml` 的 `allowBuilds` 占位符改成布尔值后重跑。
+6. **脚本化真机验证**：`dsh web --no-open --port 0` 让 OS 选端口，stdout 打印 `dsh web: http://127.0.0.1:<port>/?token=…`；client 改动 `pnpm build` 后重新 navigate 该 URL 即生效（host 改动要重启）。工作区行的「…」菜单要先给行加上 `menuOpen`（点 `button[aria-label*="操作"]`）才会触发插件的 MutationObserver 注入。
 
 ---
 
@@ -51,14 +53,14 @@ pnpm proto:verify       # 多根 runner 原型实证（Windows ACL，需先 buil
 
 `tests/`（vitest，browser 组件用 jsdom）：
 
-- `dirs-api.spec.ts` — CRUD + 锚定 + 失效根 + 项目解析 + 目录列表（排序/fence 403/跨盘根）+ 读/写/文件字节与下载 disposition。
-- `project-tab.spec.tsx` — 无配置回退单根、根行（主/共享/缺失）、懒加载、点击把文件交给 `openPreview`、右键菜单（含「编辑」交给 `openEditor`；预览页本身在 `native-sidebar.spec.tsx`）。
+- `dirs-api.spec.ts` — CRUD + 锚定 + 失效根 + 项目解析（含 `primary` 存活/回落）+ 目录列表（排序/fence 403/跨盘根）+ 读/写/文件字节与下载 disposition。
+- `project-tab.spec.tsx` — 无配置回退单根、根行（主/共享/缺失）、`主要` 跟随排序、懒加载、点击把文件交给 `openPreview`、右键菜单（含「编辑」交给 `openEditor`；预览页本身在 `native-sidebar.spec.tsx`）。
 - `file-reference.spec.ts` — @ 引用源注册 / 注入 / 序列化。
-- `client-apply.spec.tsx` / `client-components.spec.tsx` — 插件形态、菜单注入、管理弹窗。
+- `client-apply.spec.tsx` / `client-components.spec.tsx` — 插件形态、菜单注入、编辑弹窗（源文件夹列表、添加/移除、设为主要/交回锚点）。
 - `native-sidebar.spec.tsx` — 原生右侧栏两阶段注册（type/body/title 的 id 与 key）、树点击可读文件经 `tab.actions.openResource` 交给宿主 viewer（含 `C:/…` 与 `%E4%B8%AD%E6%96%87` 这类地址构造）、无扩展名文件与「编辑」仍经 `tab.actions.openTab` 走自有 page、`navigation.params` 的 path/mode 读取与 chip 标题回退、`useTabInfo` 抛错时的等待态、晚到的 carrier、unload 回收、**传下去的 runtime ctx 真能拿到 `sessions.scope`/`conversation`**（fake 如实建模 cordis 代理会吞掉 `ctx.sessions`）、**同一文件被再次导航（revision 变了）会重读**。
 - `native-sidebar-composition.spec.ts` — 拿真实 `SlotCore` 验证键控 seat：未声明的 seat 注册不抛（这正是走 `slots.inject` 而非直接 `register` 的理由）、声明后落两个 key、dispose 全回收。
 - `fs-fence.spec.ts` / `seam-wiring.spec.ts` — 多根 fence 收窄/隔离/自愈、runner 接线。
-- `context-injection.spec.ts` — 上下文提醒（文本组成/折叠位置/去重/缺失标注）。
+- `context-injection.spec.ts` — 上下文提醒（文本组成、主要领头与失效回落、折叠位置、去重、缺失标注）。
 - `add-dir.spec.ts` — add-dir 工具（校验/审批/持久化）。
 - `plugin-shape.spec.ts` — 插件导出形态。
 
@@ -73,3 +75,5 @@ pnpm proto:verify       # 多根 runner 原型实证（Windows ACL，需先 buil
 - **`updateListener` 是 `CodeMirrorView.updateListener.of(...)`**，不是 `EditorState.updateListener`（那不存在）。
 - **`import.meta` / node 内置**：只存在于 host 侧 `src/*.ts`；client 一律用 `paths.ts`。
 - **路径比较大小写**：Windows 上 `samePath`/`relativePath`/`isPathUnder`（`containment.ts`）都按平台大小写约定处理；跨盘符返回绝对路径回退。
+- **别拿 `--dsw-alias-bg-layer-*` 当「比背景深一档」用**：真机浅色主题下 layer-1/2/base **全是 `#fff`**（0.1.6-alpha.2 实测，fallback 值永远不生效），要一层看得见的浅底得自己混——用文件顶部那对共享变量 `--dsh-cxp-fill` / `--dsh-cxp-fill-strong`（按 `--dsw-alias-label-primary` 做 `color-mix`，声明在 `[data-dsh-codex-project-dialog], [data-dsh-codex-project-tab]` 两个自有作用域根上，深色主题自动变提亮）。新加浅底表面直接引用它们，别再写回 layer token。
+- **弹窗 portal 在宿主 CSS reset 之外**：挂到 `document.body` 的那棵树拿到的是 `box-sizing: content-box`，所以 `min-height`/`height` 按内容盒算——没有动作按钮的「主要」行会比别的行矮 6px，靠行上的 `min-height: 24px` 补齐。

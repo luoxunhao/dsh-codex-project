@@ -36,18 +36,24 @@ describe('createSpacesApi', () => {
     expect(fetchMock).toHaveBeenCalledWith('/codex-project/api/dirs', expect.objectContaining({ method: 'GET' }))
   })
 
-  it('gets one workspace dirs through the encoded id query', async () => {
-    fetchMock.mockResolvedValue(jsonResponse(200, { ok: true, dirs: ['D:\\b'] }))
-    expect(await api.getDirs('s/1')).toEqual(['D:\\b'])
+  it('gets one workspace dirs and primary through the encoded id query', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(200, { ok: true, dirs: ['D:\\b'], primary: 'D:\\b' }))
+    expect(await api.getDirs('s/1')).toEqual({ dirs: ['D:\\b'], primary: 'D:\\b' })
     expect(fetchMock.mock.calls[0]![0]).toBe('/codex-project/api/dirs?workspaceId=s%2F1')
   })
 
   it('sets dirs with a JSON body', async () => {
     fetchMock.mockResolvedValue(jsonResponse(200, { ok: true, dirs: ['D:\\b'] }))
-    expect(await api.setDirs('s1', ['D:\\b'])).toEqual(['D:\\b'])
+    expect(await api.setDirs('s1', ['D:\\b'])).toEqual({ dirs: ['D:\\b'] })
     const [, init] = fetchMock.mock.calls[0]!
     expect(init?.method).toBe('PUT')
     expect(init?.body).toBe(JSON.stringify({ workspaceId: 's1', dirs: ['D:\\b'] }))
+  })
+
+  it('sets the display primary in the same PUT body', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(200, { ok: true, dirs: ['D:\\b'], primary: 'D:\\b' }))
+    expect(await api.setDirs('s1', ['D:\\b'], 'D:\\b')).toEqual({ dirs: ['D:\\b'], primary: 'D:\\b' })
+    expect(fetchMock.mock.calls[0]![1]?.body).toBe(JSON.stringify({ workspaceId: 's1', dirs: ['D:\\b'], primary: 'D:\\b' }))
   })
 
   it('opens a local directory through the plugin route', async () => {

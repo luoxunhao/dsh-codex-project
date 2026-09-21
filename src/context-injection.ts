@@ -1,22 +1,24 @@
 /**
  * Session context reminder: make the model aware of the additional
  * writable-dir record it works under. Folded into the step that claims the
- * session's user messages, and only when the effective writable set CHANGED
- * since the last reminder this plugin put on the session surface — a fresh
- * session gets one seeding reminder, then nothing further until a directory
- * is added (add-dir) or removed (the manage dialog), which changes the text
- * and thus re-folds on the next user message. No change event is needed: the
- * reminder text is derived purely from the directory set, so a changed set
- * necessarily produces changed text.
+ * session's user messages, and only when the effective reminder CHANGED since
+ * the last one this plugin put on the session surface — a fresh session gets
+ * one seeding reminder, then nothing further until a directory is added
+ * (add-dir) or removed (the 编辑工作区 dialog) or the 主要 choice changes, each
+ * of which changes the text and thus re-folds on the next user message. No
+ * change event is needed: the reminder text is derived purely from the
+ * directory set and the primary, so either change produces changed text.
  *
  * The reminder carries one short `<system-reminder>` block listing the
- * workspace's main path plus its additional writable directories, and a note
- * that the additional directories are governed by the same workspace-write
- * permission as the main workspace (the plugin grants a workspace-level SID
- * on every surviving root — additional dirs never exceed the main root's
- * boundary, so the model can treat them uniformly). A vanished dir is
- * skipped silently. AGENTS.md summaries are NOT injected: file content is
- * the model's own tool work.
+ * workspace's directories — the user's 主要 root first when one is set, then
+ * the session workspace, then the rest — and a note that every listed
+ * directory is governed by the same workspace-write permission (the plugin
+ * grants a workspace-level SID on every surviving root, so no root exceeds the
+ * session workspace's boundary and the model can treat them uniformly).
+ * Because the primary is part of the text, 「设为主要」 re-folds the reminder on
+ * the next user message the same way adding or removing a directory does. A
+ * vanished dir is skipped silently. AGENTS.md summaries are NOT injected: file
+ * content is the model's own tool work.
  *
  * Dedup: `hasIdenticalInjection` walks the real session surface (the
  * `surface.nodes` sequences resolved through `eventAt`) for the newest
@@ -59,13 +61,17 @@ export interface InjectionSession {
 
 /**
  * The model-facing `<system-reminder>` text describing one workspace's
- * writable set: the main workspace path plus every additional dir, then a
- * sentence noting the additional dirs are governed by the same permission as
- * the main workspace. Roots are shown in their configured (canonical-ish)
- * spelling; the current-workspace marker compares canonical forms. Directory
- * list plus the permission hint — no file contents, missing dirs silently
- * skipped. English copy on purpose — the reminder is model-facing prompt
- * text.
+ * writable set: the primary root first (when the user picked one), then the
+ * session workspace, then the remaining additional dirs in configured order,
+ * followed by a sentence noting every listed directory shares the session
+ * workspace's permissions (the plugin grants a workspace-level SID on each
+ * surviving root — no root exceeds the session workspace's boundary, so the
+ * model can treat them uniformly). Roots are shown in their configured
+ * (canonical-ish) spelling; the current-workspace marker compares canonical
+ * forms, and a primary whose directory vanished is dropped rather than
+ * leading the list. Directory list plus the permission hint — no file
+ * contents, missing dirs silently skipped. English copy on purpose — the
+ * reminder is model-facing prompt text.
  * @param workspaceId - the owning workspace.
  * @param record - the workspace's persisted record.
  * @param canonicalWorkspace - the canonical session workspace.
@@ -76,15 +82,22 @@ export function composeWorkspaceContextText(
   record: WorkspaceDirs,
   canonicalWorkspace: string,
 ): string {
-  const lines = [
-    `- ${record.path}${tryCanonicalDirectory(record.path) === canonicalWorkspace ? ' (current session workspace)' : ''}`,
-  ]
-  for (const dir of record.dirs) if (tryCanonicalDirectory(dir) !== undefined) lines.push(`- ${dir}`)
+  const anchor = `- ${record.path}${tryCanonicalDirectory(record.path) === canonicalWorkspace ? ' (current session workspace)' : ''}`
+  const surviving = record.dirs.filter(dir => tryCanonicalDirectory(dir) !== undefined)
+  const configured = record.primary
+  // Only a surviving dir can lead: compare canonical forms so a different
+  // spelling of the same path still matches.
+  const primary = configured === undefined
+    ? undefined
+    : surviving.find(dir => tryCanonicalDirectory(dir) === tryCanonicalDirectory(configured))
+  const lines = primary === undefined
+    ? [anchor, ...surviving.map(dir => `- ${dir}`)]
+    : [`- ${primary} (primary workspace)`, anchor, ...surviving.filter(dir => dir !== primary).map(dir => `- ${dir}`)]
   return [
     REMINDER_OPEN,
     `[Workspace sharing] The current session workspace (${workspaceId}) is associated with these directories:`,
     ...lines,
-    'The additional directories above are governed by the same permissions as the main workspace.',
+    'Every directory listed is governed by the same permissions as the session workspace.',
     REMINDER_CLOSE,
   ].join('\n')
 }

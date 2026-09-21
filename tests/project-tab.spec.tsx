@@ -48,8 +48,8 @@ function fakeApi(project: ProjectView | null, listings: Record<string, ProjectLi
     searches,
     api: {
       list: async () => ({}),
-      getDirs: async () => [],
-      setDirs: async (_id, dirs) => [...dirs],
+      getDirs: async () => ({ dirs: [] }),
+      setDirs: async (_id, dirs) => ({ dirs }),
       openDirectory: async (path) => { openedDirs.push(path) },
       pickRoots: async () => [{ name: 'E:\\', path: 'E:\\' }],
       pickList: async (path) => ({ path, parent: null, home: 'C:\\Users\\me', dirs: [] }),
@@ -176,6 +176,13 @@ describe('ProjectTab', () => {
     expect(tab.textContent).toContain('shared')
     expect(tab.textContent).toContain('(⚠ directory missing)')
     expect(rowByText(tab, '(⚠ directory missing)').hasAttribute('data-is-missing')).toBe(true)
+  })
+
+  it('leads the root rows with the folder set as 主要', async () => {
+    const fake = fakeApi({ ...PROJECT, primary: ROOT_B })
+    const { tab } = await renderTab(fake.api, fakeCtx().ctx)
+    const names = Array.from(tab.querySelectorAll('.dsh-cxp-tree-name')).map(node => node.textContent)
+    expect(names).toEqual(['shared (主)', 'proj', 'gone (⚠ directory missing)'])
   })
 
   it('loads a directory level lazily on expand', async () => {

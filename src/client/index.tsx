@@ -1,5 +1,5 @@
 /**
- * dsh-codex-project client half: injects the 管理工作区 entry into the
+ * dsh-codex-project client half: injects the 编辑工作区 entry into the
  * native workspace 「…」 menu (DOM-level, self-healing) and mounts the
  * manage dialog it opens. It ALSO registers the 项目文件夹 tree — a
  * multi-root file tree of the project (main root + shared dirs, cross-drive)

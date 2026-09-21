@@ -22,6 +22,12 @@ export interface ProjectView {
   dirs: string[]
   /** Configured dirs that no longer exist (original spellings), each a stale root. */
   missingDirs: string[]
+  /**
+   * The display primary (a canonical member of `dirs`) when the user picked
+   * one: it leads the 源文件夹 list and the tab's root rows. Never the anchor,
+   * never a fence or `@` base change.
+   */
+  primary?: string
 }
 
 /** Canonicalize a directory, or `undefined` when it does not exist. */
@@ -49,5 +55,6 @@ export function projectFor(records: Record<string, WorkspaceDirs>, canonicalCwd:
     path: main!,
     dirs,
     missingDirs: match.missingDirs,
+    ...(match.primary === undefined ? {} : { primary: match.primary }),
   }
 }

@@ -1,13 +1,12 @@
 /**
  * dsh-codex-project client tests: the native workspace 「…」 menu injection
- * (打开本地目录 + 管理工作区 items) and the manage dialog it opens —
- * additional-writable-dir list with an in-page 添加/移除 flow for the
- * workspace.
+ * (打开本地目录 + 编辑工作区 items) and the edit dialog it opens — the
+ * 源文件夹 list with an in-page 添加/移除 flow and the 设为主要 ordering.
  */
 
 // @vitest-environment jsdom
 
-import { createElement, type ReactNode } from 'react'
+import { createElement } from 'react'
 import { createRoot } from 'react-dom/client'
 import { act } from 'react-dom/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -43,20 +42,23 @@ function fakeWorkspaces():
   }
 }
 
-/** A spaces API fake around per-workspace dir lists plus an in-page picker feed. */
+/** A spaces API fake around per-workspace dirs/primary state plus an in-page picker feed. */
 function fakeApi(
   dirsByWorkspace: Record<string, string[]> = {},
   fs: Record<string, string[]> = {},
+  primaryByWorkspace: Record<string, string> = {},
 ):
   {
     api: SpacesApi
     dirsByWorkspace: Record<string, string[]>
-    calls: Array<{ op: string; workspaceId?: string; dirs?: string[] }>
+    primaryByWorkspace: Record<string, string | undefined>
+    calls: Array<{ op: string; workspaceId?: string; dirs?: string[]; primary?: string }>
     openedDirs: string[]
     listed: string[]
   } {
   const dirsByWorkspaceCopy = { ...dirsByWorkspace }
-  const calls: Array<{ op: string; workspaceId?: string; dirs?: string[] }> = []
+  const primaryCopy = { ...primaryByWorkspace }
+  const calls: Array<{ op: string; workspaceId?: string; dirs?: string[]; primary?: string }> = []
   const openedDirs: string[] = []
   const listed: string[] = []
   // pickList mirrors the host: subdir names under `path` become absolute children.
@@ -70,18 +72,28 @@ function fakeApi(
   }
   return {
     dirsByWorkspace: dirsByWorkspaceCopy,
+    primaryByWorkspace: primaryCopy,
     calls,
     openedDirs,
     listed,
     api: {
       list: async () => Object.fromEntries(
-        Object.entries(dirsByWorkspaceCopy).map(([id, dirs]) => [id, { path: id === 'w1' ? ROOT_A : ROOT_B, dirs }]),
+        Object.entries(dirsByWorkspaceCopy).map(([id, dirs]) => [id, {
+          path: id === 'w1' ? ROOT_A : ROOT_B,
+          dirs,
+          primary: primaryCopy[id],
+        }]),
       ),
-      getDirs: async (workspaceId) => [...(dirsByWorkspaceCopy[workspaceId] ?? [])],
-      setDirs: async (workspaceId, dirs) => {
-        calls.push({ op: 'setDirs', workspaceId, dirs })
+      getDirs: async (workspaceId) => ({
+        dirs: [...(dirsByWorkspaceCopy[workspaceId] ?? [])],
+        primary: primaryCopy[workspaceId],
+      }),
+      setDirs: async (workspaceId, dirs, primary) => {
+        calls.push({ op: 'setDirs', workspaceId, dirs, primary })
         dirsByWorkspaceCopy[workspaceId] = [...dirs]
-        return [...dirs]
+        if (primary === undefined) delete primaryCopy[workspaceId]
+        else primaryCopy[workspaceId] = primary
+        return { dirs: [...dirs], primary: primaryCopy[workspaceId] }
       },
       openDirectory: async (path) => { openedDirs.push(path) },
       pickRoots: async (): Promise<PickRoot[]> => [
@@ -105,21 +117,6 @@ function fakeApi(
       downloadUrl: (_cwd, path) => `/file?path=${encodeURIComponent(path)}&download=1`,
     },
   }
-}
-
-/** Render with effects flushed (the dialog loads dirs in useEffect). */
-async function renderWithEffects(node: ReactNode): Promise<string> {
-  const container = document.createElement('div')
-  document.body.appendChild(container)
-  const root = createRoot(container)
-  await act(async () => {
-    root.render(node)
-  })
-  await act(async () => {})
-  const html = container.innerHTML
-  root.unmount()
-  container.remove()
-  return html
 }
 
 /** Click one button by its text content. */
@@ -161,7 +158,7 @@ describe('workspace … menu injection', () => {
     return { row, menu, trigger }
   }
 
-  it('injects 打开本地目录 and 管理工作区 into the open workspace menu', async () => {
+  it('injects 打开本地目录 and 编辑工作区 into the open workspace menu', async () => {
     const { menu } = fakeOpenMenu()
     const dispose = mountWorkspaceMenuManageEntry({ workspaces: fakeWorkspaces().service, api: fakeApi().api })
     await new Promise(resolve => setTimeout(resolve, 0))
@@ -173,7 +170,7 @@ describe('workspace … menu injection', () => {
     expect(openRow?.textContent).toBe('打开本地目录')
     expect(manageRow?.getAttribute('role')).toBe('menuitem')
     expect(manageRow?.querySelector('svg')).not.toBeNull()
-    expect(manageRow?.textContent).toBe('管理工作区')
+    expect(manageRow?.textContent).toBe('编辑工作区')
     dispose()
   })
 
@@ -209,7 +206,7 @@ describe('workspace … menu injection', () => {
     expect(escapeEvents).toEqual(['escape'])
     const dialog = document.querySelector<HTMLElement>(DIALOG_SELECTOR)
     expect(dialog).not.toBeNull()
-    expect(dialog!.textContent).toContain('管理工作区「proj-a」')
+    expect(dialog!.textContent).toContain('编辑工作区')
     dispose()
   })
 
@@ -284,22 +281,11 @@ describe('WorkspaceDialog', () => {
 
   const workspace = (): ClientWorkspaceView => WORKSPACES[0]!
 
-  it('shows the workspace path and every additional dir, and removes one', async () => {
-    const fake = fakeApi({ w1: [ROOT_B, ROOT_C] })
-    const html = await renderWithEffects(createElement(WorkspaceDialog, {
-      workspace: workspace(),
-      api: fake.api,
-      workspaces: fakeWorkspaces().service,
-      onClose: () => {},
-    }))
-    expect(html).toContain('管理工作区')
-    expect(html).toContain('主目录')
-    expect(html).toContain(ROOT_A)
-    expect(html).toContain('附加可写目录')
-    expect(html).toContain('proj-b')
-    expect(html).toContain(ROOT_B)
-
-    // Remove one additional dir via its row's 移除 button.
+  /** Mount the dialog against one fake and flush its dirs load. */
+  async function mount(
+    fake: ReturnType<typeof fakeApi>,
+    onClose: () => void = () => {},
+  ): Promise<{ container: HTMLElement; unmount(): void }> {
     const container = document.createElement('div')
     document.body.appendChild(container)
     const root = createRoot(container)
@@ -307,39 +293,81 @@ describe('WorkspaceDialog', () => {
       root.render(createElement(WorkspaceDialog, {
         workspace: workspace(),
         api: fake.api,
-        workspaces: fakeWorkspaces().service,
-        onClose: () => {},
+        onClose,
       }))
     })
     await act(async () => {})
-    const removeButtons = Array.from(container.querySelectorAll<HTMLButtonElement>('button[title="移除附加目录"]'))
-    expect(removeButtons).toHaveLength(2)
-    await act(async () => {
-      removeButtons[0]!.click()
-    })
+    return { container, unmount: () => { root.unmount(); container.remove() } }
+  }
+
+  /** The 源文件夹 rows' folder names, in the order the dialog lists them. */
+  function rowLabels(container: HTMLElement): string[] {
+    return Array.from(container.querySelectorAll('.dsh-cxp-dialog-row .dsh-cxp-root-label'))
+      .map(node => node.textContent ?? '')
+  }
+
+  /** One row's action button, addressed by its folder name and a button selector. */
+  function rowAction(container: HTMLElement, label: string, selector: string): HTMLButtonElement {
+    const row = Array.from(container.querySelectorAll<HTMLElement>('.dsh-cxp-dialog-row'))
+      .find(candidate => candidate.querySelector('.dsh-cxp-root-label')?.textContent === label)
+    const button = row?.querySelector<HTMLButtonElement>(selector)
+    expect(button, `row "${label}" has no ${selector}`).toBeDefined()
+    return button!
+  }
+
+  it('lists every source folder and removes an additional one', async () => {
+    const fake = fakeApi({ w1: [ROOT_B, ROOT_C] })
+    const { container, unmount } = await mount(fake)
+    expect(container.textContent).toContain('编辑工作区')
+    expect(container.textContent).toContain('源文件夹')
+    expect(rowLabels(container)).toEqual(['proj-a', 'proj-b', 'proj-c'])
+    // With no 主要 choice the anchor leads and carries the badge; only the
+    // additional rows can be removed.
+    expect(container.querySelectorAll('.dsh-cxp-root-badge')).toHaveLength(1)
+    expect(container.querySelectorAll('button[title="移除该源文件夹"]')).toHaveLength(2)
+
+    await act(async () => { rowAction(container, 'proj-b', 'button[title="移除该源文件夹"]').click() })
     await act(async () => {})
     expect(fake.dirsByWorkspace.w1).toEqual([ROOT_C])
     expect(fake.calls).toEqual([{ op: 'setDirs', workspaceId: 'w1', dirs: [ROOT_C] }])
-    root.unmount()
-    container.remove()
+    expect(rowLabels(container)).toEqual(['proj-a', 'proj-c'])
+    unmount()
+  })
+
+  it('leads the list with the folder set as 主要', async () => {
+    const fake = fakeApi({ w1: [ROOT_B, ROOT_C] })
+    const { container, unmount } = await mount(fake)
+    await act(async () => { rowAction(container, 'proj-b', '.dsh-cxp-text-btn').click() })
+    await act(async () => {})
+    expect(fake.calls).toEqual([{ op: 'setDirs', workspaceId: 'w1', dirs: [ROOT_B, ROOT_C], primary: ROOT_B }])
+    expect(rowLabels(container)).toEqual(['proj-b', 'proj-a', 'proj-c'])
+    // The anchor row is now the one offering 设为主要, and it stays unremovable.
+    expect(rowAction(container, 'proj-a', '.dsh-cxp-text-btn')).toBeDefined()
+    const anchorRow = Array.from(container.querySelectorAll<HTMLElement>('.dsh-cxp-dialog-row'))
+      .find(candidate => candidate.textContent?.includes('proj-a'))!
+    expect(anchorRow.querySelector('button[title="移除该源文件夹"]')).toBeNull()
+    expect(anchorRow.querySelector('.dsh-cxp-root-badge')).toBeNull()
+    unmount()
+  })
+
+  it('hands 主要 back to the workspace folder from the anchor row', async () => {
+    const fake = fakeApi({ w1: [ROOT_B, ROOT_C] }, {}, { w1: ROOT_C })
+    const { container, unmount } = await mount(fake)
+    expect(rowLabels(container)).toEqual(['proj-c', 'proj-a', 'proj-b'])
+    await act(async () => { rowAction(container, 'proj-a', '.dsh-cxp-text-btn').click() })
+    await act(async () => {})
+    // Clearing the marker is a PUT without `primary` — the anchor leads again.
+    expect(fake.calls).toEqual([{ op: 'setDirs', workspaceId: 'w1', dirs: [ROOT_B, ROOT_C] }])
+    expect(fake.primaryByWorkspace.w1).toBeUndefined()
+    expect(rowLabels(container)).toEqual(['proj-a', 'proj-b', 'proj-c'])
+    unmount()
   })
 
   it('adds the current (workspace) dir through the in-page picker', async () => {
     const fake = fakeApi({ w1: [] }, { [ROOT_A]: ['shared'] })
-    const container = document.createElement('div')
-    document.body.appendChild(container)
-    const root = createRoot(container)
-    await act(async () => {
-      root.render(createElement(WorkspaceDialog, {
-        workspace: workspace(),
-        api: fake.api,
-        workspaces: fakeWorkspaces().service,
-        onClose: () => {},
-      }))
-    })
-    await act(async () => {})
+    const { container, unmount } = await mount(fake)
     expect(container.textContent).toContain('还没有附加可写目录')
-    clickButton(container, '添加附加目录')
+    clickButton(container, '添加')
     await act(async () => {})
     // The in-page picker opened (no OS dialog), listing ROOT_A's subdirs.
     expect(container.textContent).toContain('选择当前目录')
@@ -349,25 +377,13 @@ describe('WorkspaceDialog', () => {
     await act(async () => {})
     expect(fake.dirsByWorkspace.w1).toEqual([ROOT_A])
     expect(fake.calls).toEqual([{ op: 'setDirs', workspaceId: 'w1', dirs: [ROOT_A] }])
-    root.unmount()
-    container.remove()
+    unmount()
   })
 
   it('descends into a subdirectory and adds that folder', async () => {
     const fake = fakeApi({ w1: [] }, { [ROOT_A]: ['shared'], [`${ROOT_A}\\shared`]: [] })
-    const container = document.createElement('div')
-    document.body.appendChild(container)
-    const root = createRoot(container)
-    await act(async () => {
-      root.render(createElement(WorkspaceDialog, {
-        workspace: workspace(),
-        api: fake.api,
-        workspaces: fakeWorkspaces().service,
-        onClose: () => {},
-      }))
-    })
-    await act(async () => {})
-    clickButton(container, '添加附加目录')
+    const { container, unmount } = await mount(fake)
+    clickButton(container, '添加')
     await act(async () => {})
     const target = `${ROOT_A}\\shared`
     clickButton(container, 'shared')
@@ -377,25 +393,13 @@ describe('WorkspaceDialog', () => {
     await act(async () => {})
     expect(fake.dirsByWorkspace.w1).toEqual([target])
     expect(fake.calls).toEqual([{ op: 'setDirs', workspaceId: 'w1', dirs: [target] }])
-    root.unmount()
-    container.remove()
+    unmount()
   })
 
   it('jumps to a Git-Bash style drive root typed in the path input', async () => {
     const fake = fakeApi({ w1: [] }, { 'D:\\': ['data'] })
-    const container = document.createElement('div')
-    document.body.appendChild(container)
-    const root = createRoot(container)
-    await act(async () => {
-      root.render(createElement(WorkspaceDialog, {
-        workspace: workspace(),
-        api: fake.api,
-        workspaces: fakeWorkspaces().service,
-        onClose: () => {},
-      }))
-    })
-    await act(async () => {})
-    clickButton(container, '添加附加目录')
+    const { container, unmount } = await mount(fake)
+    clickButton(container, '添加')
     await act(async () => {})
     // Type a Git-Bash root and press Enter → the picker asks pickList('/d').
     const input = container.querySelector<HTMLInputElement>('.dsh-cxp-folder-picker-input')!
@@ -418,77 +422,40 @@ describe('WorkspaceDialog', () => {
     await act(async () => {})
     expect(fake.dirsByWorkspace.w1).toEqual(['D:\\data'])
     expect(fake.calls).toEqual([{ op: 'setDirs', workspaceId: 'w1', dirs: ['D:\\data'] }])
-    root.unmount()
-    container.remove()
+    unmount()
   })
 
   it('does not add when the picker is cancelled', async () => {
     const fake = fakeApi({ w1: [] }, { [ROOT_A]: ['shared'] })
-    const container = document.createElement('div')
-    document.body.appendChild(container)
-    const root = createRoot(container)
-    await act(async () => {
-      root.render(createElement(WorkspaceDialog, {
-        workspace: workspace(),
-        api: fake.api,
-        workspaces: fakeWorkspaces().service,
-        onClose: () => {},
-      }))
-    })
-    await act(async () => {})
-    clickButton(container, '添加附加目录')
+    const { container, unmount } = await mount(fake)
+    clickButton(container, '添加')
     await act(async () => {})
     clickButton(container, '取消')
     await act(async () => {})
     expect(fake.calls).toHaveLength(0)
     expect(fake.dirsByWorkspace.w1).toEqual([])
-    root.unmount()
-    container.remove()
+    unmount()
   })
 
   it('ignores adding a directory already in the list', async () => {
     const fake = fakeApi({ w1: [ROOT_A] }, { [ROOT_A]: [] })
-    const container = document.createElement('div')
-    document.body.appendChild(container)
-    const root = createRoot(container)
-    await act(async () => {
-      root.render(createElement(WorkspaceDialog, {
-        workspace: workspace(),
-        api: fake.api,
-        workspaces: fakeWorkspaces().service,
-        onClose: () => {},
-      }))
-    })
-    await act(async () => {})
-    clickButton(container, '添加附加目录')
+    const { container, unmount } = await mount(fake)
+    clickButton(container, '添加')
     await act(async () => {})
     clickButton(container, '选择当前目录')
     await act(async () => {})
     expect(fake.calls).toHaveLength(0)
     expect(fake.dirsByWorkspace.w1).toEqual([ROOT_A])
-    root.unmount()
-    container.remove()
+    unmount()
   })
 
   it('closes on Escape', async () => {
     const closed: string[] = []
-    const container = document.createElement('div')
-    document.body.appendChild(container)
-    const root = createRoot(container)
-    await act(async () => {
-      root.render(createElement(WorkspaceDialog, {
-        workspace: workspace(),
-        api: fakeApi({}).api,
-        workspaces: fakeWorkspaces().service,
-        onClose: () => { closed.push('closed') },
-      }))
-    })
-    await act(async () => {})
+    const { unmount } = await mount(fakeApi({}), () => { closed.push('closed') })
     await act(async () => {
       document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
     })
     expect(closed).toEqual(['closed'])
-    root.unmount()
-    container.remove()
+    unmount()
   })
 })

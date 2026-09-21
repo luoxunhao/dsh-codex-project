@@ -13,9 +13,8 @@
  *    spawns explorer.exe). Deliberately NOT `workspaces.openPath`:
  *    dsh-better-sidebar wraps that method into its sidebar editor, where a
  *    directory is meaningless (`"<path>" is a directory`).
- *  - 管理工作区 — opens the plugin's manage dialog (`WorkspaceDialog`),
- *    which lists the shared subdirectories and offers the 设为主工作区
- *    handover.
+ *  - 编辑工作区 — opens the plugin's edit dialog (`WorkspaceDialog`), which
+ *    lists the workspace's source folders and offers 添加 / 移除 / 设为主要.
  *
  * Click flow: identify the workspace (row title → workspace registry) →
  * close the menu (Escape, the native document keydown listener) → run the
@@ -42,7 +41,7 @@ import { WorkspaceDialog } from './workspace-dialog.tsx'
 
 /** The injected block's identity (idempotent per-popup injection). */
 export const MENU_ACTIONS_SELECTOR = '[data-dsh-codex-project-menu-actions]'
-/** The 管理工作区 row (kept for tests and direct queries). */
+/** The 编辑工作区 row (kept for tests and direct queries). */
 export const MENU_MANAGE_SELECTOR = '[data-dsh-codex-project-menu-manage]'
 /** The 打开本地目录 row. */
 export const MENU_OPEN_DIRECTORY_SELECTOR = '[data-dsh-codex-project-menu-open-directory]'
@@ -51,7 +50,7 @@ export const DIALOG_SELECTOR = '[data-dsh-codex-project-dialog]'
 
 /** The injected rows' labels. */
 const MENU_OPEN_DIRECTORY_LABEL = '打开本地目录'
-const MENU_MANAGE_LABEL = '管理工作区'
+const MENU_MANAGE_LABEL = '编辑工作区'
 
 /**
  * Mirror of ui-primitives' POINTER_GRACE_MS: the workspace menu closes 200ms
@@ -94,7 +93,7 @@ function closeNativeMenu(): void {
 }
 
 /**
- * Mount the 「…」 menu injection (打开本地目录 + 管理工作区) and its manage
+ * Mount the 「…」 menu injection (打开本地目录 + 编辑工作区) and its edit
  * dialog.
  * @param deps - the workspaces service (identity) and the spaces API.
  * @returns the disposer.
@@ -149,7 +148,6 @@ export function mountWorkspaceMenuManageEntry(deps: {
     dialogRoot.render(createElement(WorkspaceDialog, {
       workspace,
       api,
-      workspaces,
       onClose: closeDialog,
     }))
   }
@@ -257,7 +255,7 @@ export function mountWorkspaceMenuManageEntry(deps: {
     }
     host.addEventListener('pointerout', onItemLeave)
     host.addEventListener('pointerover', onItemEnter)
-    console.log('[dsh-codex-project] 打开本地目录/管理工作区 items injected into workspace menu')
+    console.log('[dsh-codex-project] 打开本地目录/编辑工作区 items injected into workspace menu')
   }
 
   const startWaitObserver = (): void => {

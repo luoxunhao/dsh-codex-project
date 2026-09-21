@@ -12,6 +12,8 @@ export interface WorkspaceDirs {
   path: string
   /** Additional writable directories (absolute, may cross drives). */
   dirs: string[]
+  /** The display primary (a member of `dirs`); the anchor leads the list when absent. */
+  primary?: string
 }
 
 /** A failed dirs call: HTTP status plus the host's error message. */
@@ -34,6 +36,16 @@ export interface ProjectView {
   dirs: string[]
   /** Configured dirs that no longer exist (stale roots). */
   missingDirs: string[]
+  /** The display primary (a member of `dirs`) — leads the root rows when set. */
+  primary?: string
+}
+
+/** One workspace's editable dirs state: the additional dirs plus the display primary. */
+export interface WorkspaceDirState {
+  /** Additional writable directories, in configured order. */
+  dirs: string[]
+  /** The display primary (a member of `dirs`); the anchor leads the list when absent. */
+  primary?: string
 }
 
 /** One project-tree row (mirror of the host's ProjectEntry). */
@@ -86,12 +98,15 @@ export interface UploadFile {
 
 /** The dirs API surface. */
 export interface SpacesApi {
-  /** All workspace records (id → { path, dirs }). */
+  /** All workspace records (id → { path, dirs, primary? }). */
   list(): Promise<Record<string, WorkspaceDirs>>
-  /** One workspace's additional dirs. */
-  getDirs(workspaceId: string): Promise<string[]>
-  /** Replace one workspace's additional dirs. */
-  setDirs(workspaceId: string, dirs: string[]): Promise<string[]>
+  /** One workspace's additional dirs and display primary. */
+  getDirs(workspaceId: string): Promise<WorkspaceDirState>
+  /**
+   * Replace one workspace's additional dirs AND its display primary. The PUT
+   * replaces the record, so omitting `primary` clears the marker.
+   */
+  setDirs(workspaceId: string, dirs: string[], primary?: string): Promise<WorkspaceDirState>
   /**
    * Open one local directory in the OS file manager (plugin-owned route —
    * bypasses any openPath interception by other plugins).
@@ -172,12 +187,12 @@ export function createSpacesApi(base = '/codex-project/api'): SpacesApi {
   return {
     list: async () => (await request<{ spaces: Record<string, WorkspaceDirs> }>(base, 'GET', '/dirs')).spaces,
     getDirs: async (workspaceId) => {
-      const parsed = await request<{ dirs: string[] }>(base, 'GET', `/dirs?workspaceId=${enc(workspaceId)}`)
-      return parsed.dirs
+      const parsed = await request<{ dirs: string[]; primary?: string }>(base, 'GET', `/dirs?workspaceId=${enc(workspaceId)}`)
+      return { dirs: parsed.dirs, primary: parsed.primary }
     },
-    setDirs: async (workspaceId, dirs) => {
-      const parsed = await request<{ dirs: string[] }>(base, 'PUT', '/dirs', { workspaceId, dirs })
-      return parsed.dirs
+    setDirs: async (workspaceId, dirs, primary) => {
+      const parsed = await request<{ dirs: string[]; primary?: string }>(base, 'PUT', '/dirs', { workspaceId, dirs, primary })
+      return { dirs: parsed.dirs, primary: parsed.primary }
     },
     openDirectory: async (path) => { await request<{ ok: boolean }>(base, 'POST', '/open-directory', { path }) },
     pickRoots: async () => {

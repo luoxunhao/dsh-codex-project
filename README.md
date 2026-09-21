@@ -25,7 +25,7 @@ Codex 处理项目时，一个"项目"往往横跨多个目录：主代码库、
 | 能力 | 说明 |
 |---|---|
 | 共享子目录配置 | 每个工作区可配置任意数量共享子目录（跨盘符、可裸目录） |
-| 「管理工作区」弹窗 | 原生工作区「…」菜单注入入口：添加/移除共享子目录 |
+| 「编辑工作区」弹窗 | 原生工作区「…」菜单注入入口：源文件夹列表 + 添加/移除/设为主要 |
 | 「项目文件夹」tab | 侧边栏注册的项目多根目录树：主根 + 共享子目录（跨盘符），按层懒加载；仿 Files tab 布局（顶部搜索框 + 刷新/上传按钮 + 文件树）。点击文件交给 **DSH 自带的文件 viewer**（`openResource`，工作区外/跨盘一样能读）；右键「编辑」在插件自有的「文件预览」page 里开编辑器，右键目录用文件管理器打开。**承载走 DSH 原生右侧栏**（`ctx.sidebarRightTabs` + `sidebar.right.pane.tab` 键控 seat，0.1.6 的 web 组合默认自带） |
 | 「打开本地目录」 | 原生「…」菜单注入入口：用系统文件管理器打开该工作区文件夹（插件自有路由 spawn explorer.exe——不走 workspaces.openPath，避免被 better-sidebar 等插件劫持到侧边栏编辑器） |
 | 多根沙箱 runner | 命中配置的会话，shell/subprocess 自动走多根受限令牌（`lib/runner.js`） |
@@ -40,7 +40,7 @@ Codex 处理项目时，一个"项目"往往横跨多个目录：主代码库、
 ```
 ┌─────────────────────────── DSH web ───────────────────────────────────┐
 │  (client half)                                                        │
-│  侧边栏工作区「…」菜单 ──注入「打开本地目录」+「管理工作区」──▶ 本地动作/弹窗  │
+│  侧边栏工作区「…」菜单 ──注入「打开本地目录」+「编辑工作区」──▶ 本地动作/弹窗  │
 │  「项目文件夹」tab ──注册进 DSH 原生右侧栏（sidebarRightTabs + seat）  │
 │        │              └ 点击→宿主自带 viewer；「编辑」→自有 page  │
 │        │ fetch()                                                      │
@@ -89,7 +89,7 @@ ctx.on('agent/pre-step', async ({ agent, messages }, next) => {
 
 DSH 的 agent 循环是：**收消息 → pre-step 事件链 → 模型推理 → 工具执行 → 输出**。`agent/pre-step` 是推理前的最后一道关卡。
 
-插件在这里计算当前会话的共享目录清单，生成 `<system-reminder>` 消息插入模型上下文。提醒只在附加目录集合变化时重新折叠：新会话首次播种一次，`add_dir` 工具 / `/adddir` 指令 / 管理弹窗改动目录后才在下一轮重新注入，目录未变时跨轮不重复叠加。提醒列出主目录与附加目录，并注明**附加目录与主目录权限一致**——它们处在同一个 workspace-write 边界下（插件在每个存活根上授予工作区级 SID，附加目录绝不超出主根权限），模型可统一对待。
+插件在这里计算当前会话的共享目录清单，生成 `<system-reminder>` 消息插入模型上下文。提醒只在清单变化时重新折叠：新会话首次播种一次，`add_dir` 工具 / `/adddir` 指令 / 编辑弹窗增删目录 / **改「主要」**后才在下一轮重新注入，清单未变时跨轮不重复叠加。清单顺序是**主要根领头**（标 `(primary workspace)`）、随后是会话工作区（标 `(current session workspace)`）与其余目录；结尾声明**列出的目录与会话工作区权限相同**——它们处在同一个 workspace-write 边界下（插件在每个存活根上授予工作区级 SID，附加目录绝不超出会话根权限），模型可统一对待。
 
 ### 3. `ctx.tools.register()` — 注册 add_dir 模型工具
 
@@ -178,15 +178,17 @@ fs fence 按可写根集合放行/拒绝（与 runner 共用同一命中判定�
   "workspaces": {
     "<workspaceId>": {
       "path": "主根（该工作区自身的路径）",
-      "dirs": ["共享子目录1", "共享子目录2"]
+      "dirs": ["共享子目录1", "共享子目录2"],
+      "primary": "展示层主要根（dirs 之一，可缺省）"
     }
   }
 }
 ```
 
 - `path` 恒为该工作区自己的主根（锚定，记录键即工作区 id）；`dirs` 为额外可写目录；
+- `primary` **只影响"谁领头、谁被称作主"**：「编辑工作区」弹窗的源文件夹列表、「项目文件夹」tab 根行、以及注入给模型的上下文提醒都由它领头并带标注（改主要会让提醒文本变化并在下一轮重新折叠）。锚定、fence、`@` 相对基准一律忽略它，所以设主要既不会放宽也不会收窄任何目录的权限；该目录消失时自动回落成 `path` 领头；
 - 缺省/空库 = 无配置 = 纯透传；
-- **失效根不自动清理**：目录消失不会改写配置（对齐 DSH 核心"被动失效保留记录、降级显示"策略）；通过「管理工作区」弹窗或 API 显式移除。
+- **失效根不自动清理**：目录消失不会改写配置（对齐 DSH 核心"被动失效保留记录、降级显示"策略）；通过「编辑工作区」弹窗或 API 显式移除。
 
 ## HTTP API
 
@@ -195,9 +197,9 @@ fs fence 按可写根集合放行/拒绝（与 runner 共用同一命中判定�
 | 方法 | 路径 | 说明 |
 |---|---|---|
 | GET | `/ping` | 挂载冒烟 |
-| GET | `/dirs?workspaceId=<id>` | 某工作区的共享子目录列表（无记录返回空数组；只有未知 id 才 404） |
-| PUT | `/dirs` | 替换某工作区的共享子目录（`{ workspaceId, dirs }`）；首次添加自动锚定该工作区 |
-| GET | `/project?cwd=<path>` | cwd 命中的项目：`{ path, dirs, missingDirs }` 或 `null`（无项目配置） |
+| GET | `/dirs?workspaceId=<id>` | 某工作区的共享子目录与主要根 `{ dirs, primary? }`（无记录返回空数组；只有未知 id 才 404） |
+| PUT | `/dirs` | 替换某工作区的子目录与主要根（`{ workspaceId, dirs, primary? }`）；首次添加自动锚定该工作区，省略 `primary` 即清除；`primary` 不是 `dirs` 之一 → 400 |
+| GET | `/project?cwd=<path>` | cwd 命中的项目：`{ path, dirs, missingDirs, primary? }` 或 `null`（无项目配置） |
 | GET | `/list?cwd=<path>&path=<abs>` | 列一个项目根目录层级（fence 到项目可写根，越界 403） |
 | GET | `/read?cwd=<path>&path=<abs>` | 文本读取，上限 4MB，超出返回 `truncated: true` |
 | POST | `/write` | 保存文本（`{ cwd, path, content }`），fence，自动建父目录 |
@@ -216,7 +218,7 @@ fs fence 按可写根集合放行/拒绝（与 runner 共用同一命中判定�
 dsh plugin --profile web add @luoxunhao/dsh-codex-project
 ```
 
-装完**硬刷新浏览器**（Cmd/Ctrl+Shift+R）即可看到「项目文件夹」tab 和管理工作区入口。client 改动无需重启 DSH；host 改动需重启。
+装完**硬刷新浏览器**（Cmd/Ctrl+Shift+R）即可看到「项目文件夹」tab 和编辑工作区入口。client 改动无需重启 DSH；host 改动需重启。
 
 <details>
 <summary><b>本地开发</b></summary>
@@ -250,7 +252,7 @@ client 改动浏览器硬刷新即可；host 改动（路由、seam、fs、runne
 
 ```bash
 pnpm typecheck          # 类型检查（tsc --noEmit）
-pnpm test               # 单元测试（vitest，18 个文件 / 225 用例）
+pnpm test               # 单元测试（vitest，18 个文件 / 234 用例）
 pnpm build              # 构建 lib/（tsc types + tsdown：host ESM + client CJS + runner + fs）
 pnpm proto:verify       # 多根 runner 原型实证（Windows ACL，需先 build）
 ```
@@ -268,7 +270,8 @@ pnpm proto:verify       # 多根 runner 原型实证（Windows ACL，需先 buil
 | 项 | 值 |
 |---|---|
 | peer 范围 | `@deepseek-ai/dsh-*` 一律 `^0.1.6-alpha.2` |
-| 验证基线 | **DSH 0.1.6-alpha.2**（`dsh plugin --profile web add <本仓库>` 装进 `web` profile → `dsh web`）。**2026-09-20 真机重验通过**，挂载面那两条改动（`ctx.inject` 依赖表加 `sessions`、`dsh.client.inject` 摘掉承载包）不再是欠账：原生右侧栏 tab 条出现「项目文件夹」并可打开；根行展开的目录列表走插件自有多根路由；点文件开 `codex-project-file` 预览 tab（markdown 正常渲染）；切「编辑」CodeMirror 正常挂载，未脏时「保存」为 disabled；右键「引用到对话」真的把引用插进了输入框——即合成 `{ get, sessions }` 那条在真宿主上生效，不是只被 jsdom fake 建模。`pnpm typecheck` / `pnpm test` 225 用例 / `pnpm build` 全绿，控制台零报错（唯一警告来自无关的 dsh-dream-skin，外观类）。`/adddir` 的 native 门控也在真机上复验过：`/` 菜单里 `/adddir` 正常在册（54 项）。两点保留：**本次是 `link:` 指向本地构建**（npm 上只有 0.11.0，非发布版路径）；**「重复点击同一文件会重读」一项本轮未测**。**2026-09-21 追加真机验证（预览改走宿主自带 viewer）**：会话根之外、且在另一个盘（C:）的 JSON / markdown / jpg / PDF 都能在原生 tab 里读出来（markdown 全文渲染、`img` naturalWidth 3840×2160、PDF canvas 793×1122、无扩展名文件仍落回自有 page 的下载），`tab.actions.openResource` 在该宿主确实存在，地址里的 `C:` 冒号按字面保留也能被解析；同轮补测写回：右键「编辑」开自有 page 直接进编辑器（CodeMirror host 不 hidden），改文本后「保存」由 disabled 转可点，Ctrl+S 之后磁盘文件真的变了——目标在会话根之外，但**与主根同盘**，跨盘符那一条只验到读。**09-21 那轮的欠账**：浏览器面板未开，只有 DOM 结构证据、无视觉截图；超长文件靠滚动续读的分页、跨盘文件的实时刷新（change feed 按会话根过滤，仅代码层判断）、会话切换与多 pane 下 `openResource` 的落点，都未实测 |
+| 验证基线 | **DSH 0.1.6-alpha.2**（`dsh plugin --profile web add <本仓库>` 装进 `web` profile → `dsh web`）。**2026-09-20 真机重验通过**，挂载面那两条改动（`ctx.inject` 依赖表加 `sessions`、`dsh.client.inject` 摘掉承载包）不再是欠账：原生右侧栏 tab 条出现「项目文件夹」并可打开；根行展开的目录列表走插件自有多根路由；点文件开 `codex-project-file` 预览 tab（markdown 正常渲染）；切「编辑」CodeMirror 正常挂载，未脏时「保存」为 disabled；右键「引用到对话」真的把引用插进了输入框——即合成 `{ get, sessions }` 那条在真宿主上生效，不是只被 jsdom fake 建模。`pnpm typecheck` / `pnpm test` 225 用例 / `pnpm build` 全绿，控制台零报错（唯一警告来自无关的 dsh-dream-skin，外观类）。`/adddir` 的 native 门控也在真机上复验过：`/` 菜单里 `/adddir` 正常在册（54 项）。**2026-09-21 追加真机验证（预览改走宿主自带 viewer）**：会话根之外、且在另一个盘（C:）的 JSON / markdown / jpg / PDF 都能在原生 tab 里读出来（markdown 全文渲染、`img` naturalWidth 3840×2160、PDF canvas 793×1122、无扩展名文件仍落回自有 page 的下载），`tab.actions.openResource` 在该宿主确实存在，地址里的 `C:` 冒号按字面保留也能被解析。两点保留：**本次是 `link:` 指向本地构建**（npm 上只有 0.11.0，非发布版路径）；**「重复点击同一文件会重读」一项本轮未测**。09-21 那轮的欠账：浏览器面板未开，只有 DOM 结构证据、无视觉截图；超长文件靠滚动续读的分页、跨盘文件的实时刷新（change feed 按会话根过滤，仅代码层判断）、会话切换与多 pane 下 `openResource` 的落点，都未实测。**同轮补测了写回**：右键「编辑」开自有 page 直接进编辑器（CodeMirror host 不 hidden），改文本后「保存」由 disabled 转可点，Ctrl+S 之后磁盘文件真的变了——目标在会话根之外，但**与主根同盘**，跨盘符那一条只验到读 |
+| 「编辑工作区」弹窗 + `primary` | **2026-09-21 在 0.1.6-alpha.2 真机验证通过**（`dsh web --no-open --port 0` + link 本地构建，用真实 `pigo` 工作区）：菜单注入项显示「编辑工作区」；弹窗截图核对过视觉（源文件夹分组、灰底圆角行、蓝色「主要」药丸、行尾「设为主要」/「×」）；真点击设主要 → PUT → `dirs.db` 落库 → 重读行序翻转，交回锚点即清除标记；「项目文件夹」tab 根行刷新后跟随 primary；`GET /project` 带出 `primary`、非 `dirs` 成员的 `primary` → 400 且不改写记录；用户既有 `dirs.db` 被 `ALTER TABLE` 真实升级（测后与快照逐字节一致）。**本轮真机还揪出两个静态渲染看不到的坑**：① 宿主浅色主题下 `--dsw-alias-bg-layer-1/2/base` 全是 `#fff`，靠 layer token 做的行底色/选择器框是白底白块，改成 `--dsh-cxp-fill`（按 label 色 color-mix）；② 弹窗 portal 在宿主 `border-box` reset 之外，无按钮的「主要」行比别的行矮 6px，补了 `min-height`。**未覆盖**：深色/皮肤主题下的观感；真机上「走选择器添加一个新目录」的完整写入（会改用户配置，只验到选择器打开与返回）；发布版安装路径 |
 | `@deepseek-ai/cordis` | `^4.0.2`（与 DSH `vendor/cordis` 同版） |
 
 **三个必须知道的坑**（升级时踩过，别再踩）：
@@ -283,14 +286,14 @@ pnpm proto:verify       # 多根 runner 原型实证（Windows ACL，需先 buil
 
 `tests/`（vitest，browser 组件用 jsdom）：
 
-- `dirs-api.spec.ts` — CRUD + 锚定 + 失效根 + 项目解析 + 目录列表（排序/fence 403/跨盘根）+ 读/写/文件字节与下载 disposition
-- `project-tab.spec.tsx` — 无配置回退单根、根行（主/共享/缺失）、懒加载、点击把文件交给 `openPreview`、右键菜单
+- `dirs-api.spec.ts` — CRUD + 锚定 + 失效根 + 项目解析（含 `primary` 存活/回落）+ 目录列表（排序/fence 403/跨盘根）+ 读/写/文件字节与下载 disposition
+- `project-tab.spec.tsx` — 无配置回退单根、根行（主/共享/缺失）、`主要` 跟随排序、懒加载、点击把文件交给 `openPreview`、右键菜单
 - `file-reference.spec.ts` — @ 引用源注册 / 注入 / 序列化
-- `client-apply.spec.tsx` / `client-components.spec.tsx` — 插件形态、菜单注入、管理弹窗
+- `client-apply.spec.tsx` / `client-components.spec.tsx` — 插件形态、菜单注入、编辑弹窗（源文件夹列表、添加/移除、设为主要/交回）
 - `native-sidebar.spec.tsx` — 原生右侧栏两阶段注册（type/body/title 的 id 与 key）、树点击可读文件经 `tab.actions.openResource` 交给宿主 viewer（含盘符与中文/空格/`#` 的地址构造）、无扩展名文件与「编辑」经 `tab.actions.openTab` 走自有 page、`navigation.params` 的 path/mode 与 chip 标题回退、`useTabInfo` 抛错时的等待态、晚到的 carrier、unload 回收、合成 runtime ctx 真能拿到 `sessions.scope`/`conversation`、同一文件再次导航（`revision` 变）会重读
 - `native-sidebar-composition.spec.ts` — 用真实 `SlotCore` 验证键控 seat 的声明/落位/回收（未声明 seat 不抛，正是走 `slots.inject` 的理由）
 - `fs-fence.spec.ts` / `seam-wiring.spec.ts` — 多根 fence 收窄/隔离/自愈、runner 接线
-- `context-injection.spec.ts` — 上下文提醒（文本组成/折叠位置/去重/缺失标注）
+- `context-injection.spec.ts` — 上下文提醒（文本组成、主要领头、折叠位置、去重、缺失标注）
 - `add-dir.spec.ts` / `adddir-command.spec.ts` — add_dir 模型工具（校验/审批/持久化）与 /adddir 指令，含**未 anchor 的新工作区首次加目录**
 - `dirs-store-write.spec.ts` — SQLite 单事务整表替换 + `DirsStore.addDir`（自动 anchor、追加不改 path、重复即幂等）
 - `open-directory.spec.ts` / `pick-browse.spec.ts` — 打开本地目录路由、跨盘符目录选择器

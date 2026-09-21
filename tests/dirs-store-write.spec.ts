@@ -4,12 +4,14 @@
  * (never half-written), a later load reads the committed rows back, and the DB
  * path is honored through `DSH_CODEX_PROJECT_CONFIG`. This guards the storage
  * contract the plugin's config now relies on (no temp-file + rename, so the
- * Windows EPERM that a JSON config could hit is structurally gone).
+ * Windows EPERM that a JSON config could hit is structurally gone) — including
+ * the on-open `ALTER TABLE` that adds `primary_dir` to a pre-existing database.
  */
 
 import { existsSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { DatabaseSync } from 'node:sqlite'
 
 import { afterAll, describe, expect, it } from 'vitest'
 
@@ -91,6 +93,25 @@ describe('SQLite dirs persistence', () => {
     expect(loadWorkspaceDirs()['w2']?.dirs).toEqual([])
     writeWorkspaceDirs({})
     expect(loadWorkspaceDirs()).toEqual({})
+  })
+
+  it('upgrades a database written before the primary column existed', () => {
+    const legacy = join(base, 'legacy.db')
+    process.env.DSH_CODEX_PROJECT_CONFIG = legacy
+    closeDirsDb()
+    // Hand-write the pre-`primary_dir` schema and one row, like an installed 0.13 DB.
+    const db = new DatabaseSync(legacy)
+    db.exec('CREATE TABLE workspaces (workspace_id TEXT PRIMARY KEY, path TEXT NOT NULL, dirs_json TEXT NOT NULL) STRICT')
+    db.prepare('INSERT INTO workspaces (workspace_id, path, dirs_json) VALUES (?, ?, ?)').run('w1', rootA, JSON.stringify([rootB]))
+    db.close()
+
+    // Opening the handle ALTERs the table in place: the old row still reads back…
+    expect(loadWorkspaceDirs()).toEqual({ w1: { path: rootA, dirs: [rootB] } })
+    // …and the new column is writable.
+    writeWorkspaceDirs({ w1: { path: rootA, dirs: [rootB], primary: rootB } })
+    expect(loadWorkspaceDirs()).toEqual({ w1: { path: rootA, dirs: [rootB], primary: rootB } })
+    closeDirsDb()
+    rmSync(legacy, { force: true })
   })
 
   it('honors a different DB path when the env var moves', () => {

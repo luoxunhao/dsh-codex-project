@@ -1,6 +1,6 @@
 /**
  * In-page folder-picker host tests: the unbounded (loopback, read-only)
- * directory browser feed behind the manage dialog's 添加附加目录 picker. Covers
+ * directory browser feed behind the edit dialog's 添加源文件夹 picker. Covers
  * the pure helpers (`pickRoots` / `pickLevel`) and their `dirsApi` route
  * wiring (pick-roots / pick-list).
  */

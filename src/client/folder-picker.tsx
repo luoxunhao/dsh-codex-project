@@ -1,7 +1,7 @@
 /**
- * FolderPicker — the in-page 选择目录 browser inside the 管理工作区 dialog.
+ * FolderPicker — the in-page 选择目录 browser inside the 编辑工作区 dialog.
  *
- * It replaces the OS-native folder dialog for 添加附加目录: native dialogs
+ * It replaces the OS-native folder dialog for 添加源文件夹: native dialogs
  * spawned by the background dsh web process (windowsHide) never grab the
  * foreground, so they open behind the browser — and passing the browser window
  * as an owner breaks the dialog entirely. An in-page browser is always on top

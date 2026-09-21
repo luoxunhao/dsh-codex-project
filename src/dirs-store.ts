@@ -59,19 +59,32 @@ export class DirsStore {
   }
 
   /**
-   * Replace one workspace's additional dirs. The workspace must already have
-   * a record (created by migration or by anchoring a registry workspace).
-   * Every dir must exist and be a directory; empty arrays clear the extras.
+   * Replace one workspace's additional dirs AND its display primary. The
+   * workspace must already have a record (created by migration or by
+   * anchoring a registry workspace). Every dir must exist and be a directory;
+   * empty arrays clear the extras. `primary` is a DISPLAY choice (which root
+   * leads the list) and must be one of `dirs` — omitting it clears the marker,
+   * which is what makes the whole record a single replace operation.
    * @param workspaceId - the owning workspace.
    * @param dirs - the additional writable dirs (may be empty).
+   * @param primary - the display primary (a member of `dirs`), or undefined for none.
    * @returns the updated record.
    */
-  async setDirs(workspaceId: string, dirs: string[]): Promise<WorkspaceDirs> {
+  async setDirs(workspaceId: string, dirs: string[], primary?: string): Promise<WorkspaceDirs> {
     return this.enqueue(() => {
       const records = loadWorkspaceDirs()
       const record = records[workspaceId]
       if (record === undefined) throw new DirsStoreError('not-found', `no workspace ${workspaceId}`)
       record.dirs = dedupeDirectionary(dirs)
+      if (primary === undefined) {
+        delete record.primary
+      } else {
+        const canonical = trySignificantPath(primary)
+        if (!record.dirs.some(dir => trySignificantPath(dir) === canonical)) {
+          throw new DirsStoreError('invalid', `primary is not one of the workspace dirs: ${primary}`)
+        }
+        record.primary = primary
+      }
       writeWorkspaceDirs(records)
       return { ...record }
     })

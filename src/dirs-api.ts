@@ -6,16 +6,19 @@
  * Routes:
  *  - GET    /codex-project/api/ping        → mount smoke
  *  - GET    /codex-project/api/dirs        → one workspace's additional dirs
+ *                                            and display primary
  *                                            (?workspaceId=<id>) — a workspace
  *                                            with NO recorded dirs returns an
  *                                            empty list (never 404: any
  *                                            registry workspace can manage its
  *                                            additional dirs)
- *  - PUT    /codex-project/api/dirs        → replace one workspace's dirs
- *                                            ({ workspaceId, dirs }); the
- *                                            workspace is anchored first so a
- *                                            first-time addition creates its
- *                                            record
+ *  - PUT    /codex-project/api/dirs        → replace one workspace's dirs and
+ *                                            primary ({ workspaceId, dirs,
+ *                                            primary? }); the workspace is
+ *                                            anchored first so a first-time
+ *                                            addition creates its record, and
+ *                                            an omitted primary clears the
+ *                                            marker
  *  - GET    /codex-project/api/project     → the project anchored at a cwd
  *                                            (?cwd=<path>) — { path, dirs,
  *                                            missingDirs } or null
@@ -96,8 +99,8 @@ function requireString(record: Record<string, unknown>, key: string): string {
   return value
 }
 
-/** Parse and shape-validate a PUT body into `{ workspaceId, dirs }`. */
-function parsePut(body: unknown): { workspaceId: string; dirs: string[] } {
+/** Parse and shape-validate a PUT body into `{ workspaceId, dirs, primary? }`. */
+function parsePut(body: unknown): { workspaceId: string; dirs: string[]; primary?: string } {
   if (typeof body !== 'object' || body === null) {
     throw new DirsStoreError('invalid', 'request body must be an object')
   }
@@ -107,7 +110,16 @@ function parsePut(body: unknown): { workspaceId: string; dirs: string[] } {
   if (!Array.isArray(rawDirs) || rawDirs.some(dir => typeof dir !== 'string' || dir === '')) {
     throw new DirsStoreError('invalid', 'dirs must be an array of non-empty strings')
   }
-  return { workspaceId, dirs: rawDirs as string[] }
+  // An absent/empty `primary` CLEARS the marker: the PUT replaces the record.
+  const rawPrimary = record.primary
+  if (rawPrimary !== undefined && rawPrimary !== null && rawPrimary !== '' && typeof rawPrimary !== 'string') {
+    throw new DirsStoreError('invalid', 'primary must be a non-empty string when present')
+  }
+  return {
+    workspaceId,
+    dirs: rawDirs as string[],
+    ...(typeof rawPrimary === 'string' && rawPrimary !== '' ? { primary: rawPrimary } : {}),
+  }
 }
 
 /** A fenced project target: the canonical cwd plus its writable roots. */
@@ -218,17 +230,22 @@ export async function dirsApi(
           if (record === undefined && !isKnownWorkspace(registry, requested)) {
             throw new DirsStoreError('not-found', `no workspace ${requested}`)
           }
-          return ok({ ok: true, dirs: record?.dirs ?? [] })
+          return ok({ ok: true, dirs: record?.dirs ?? [], ...(record?.primary === undefined ? {} : { primary: record.primary }) })
         }
         return ok({ ok: true, spaces: records })
       }
       if (method === 'PUT') {
-        const { workspaceId, dirs } = parsePut(body)
+        const { workspaceId, dirs, primary } = parsePut(body)
         // First-time addition anchors the workspace (resolving its path from
         // the registry); a later PUT just replaces the recorded dirs.
         const anchored = await store.anchor(workspaceId, resolveRegistryPath(registry, workspaceId))
-        const record = await store.setDirs(workspaceId, dirs)
-        return ok({ ok: true, dirs: record.dirs, path: anchored.path })
+        const record = await store.setDirs(workspaceId, dirs, primary)
+        return ok({
+          ok: true,
+          dirs: record.dirs,
+          path: anchored.path,
+          ...(record.primary === undefined ? {} : { primary: record.primary }),
+        })
       }
       return json(405, { ok: false, error: 'method-not-allowed' })
     }

@@ -1,6 +1,6 @@
 /**
  * 页内目录选择（folder picker）host feed — an UNFENCED directory browser for
- * the manage dialog's 添加附加目录 picker. Unlike the fenced project `/list`
+ * the edit dialog's 添加源文件夹 picker. Unlike the fenced project `/list`
  * route, this feed must navigate the whole filesystem so the user can grant
  * write access to any folder (mirroring the OS FolderBrowserDialog's reach).
  *
