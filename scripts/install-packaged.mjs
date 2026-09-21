@@ -27,7 +27,7 @@
  *   --dry-run    print what would happen, touch nothing
  */
 
-import { spawnSync } from 'node:child_process'
+import { spawn, spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { existsSync, lstatSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
@@ -86,6 +86,52 @@ const existsIncludingBrokenLink = (p) => {
 const step = (label) => console.log(`\n— ${label}`)
 
 const BOOT_BUNDLES = ['index.js', 'fs.js', 'runner.js', 'client.js']
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+
+/**
+ * Boot the profile once and wait for it to come up. `--dump-config` only
+ * composes the tree — it never imports an entry — so a row that cannot load (a
+ * host missing an export we import) passes every static check and then takes
+ * the next `dsh` start down. This gate catches that.
+ */
+async function bootProbe(profile) {
+  const args = ['--profile', profile, '--no-open', '--port', '0']
+  const win = process.platform === 'win32'
+  const child = win
+    ? spawn(`dsh.cmd ${args.map(winArg).join(' ')}`, { shell: true, encoding: 'utf8' })
+    : spawn('dsh', args, { encoding: 'utf8' })
+  let out = ''
+  child.stdout?.on('data', (chunk) => { out += chunk })
+  child.stderr?.on('data', (chunk) => { out += chunk })
+  const deadline = Date.now() + 90_000
+  let up = false
+  while (Date.now() < deadline) {
+    if (/http:\/\/127\.0\.0\.1:\d+\/\?token=/.test(out)) { up = true; break }
+    if (/plugin tree failed to load|cannot resolve profile bundle|StartupError/.test(out)) break
+    await sleep(500)
+  }
+  // Killing cmd.exe alone orphans the node server it launched, so take the tree.
+  if (win && child.pid) spawnSync('taskkill', ['/PID', String(child.pid), '/T', '/F'], { stdio: 'ignore' })
+  else child.kill('SIGKILL')
+  return { up, out }
+}
+/**
+ * The profile must never be left unable to start. Restore the pre-run manifest
+ * and lock first — `dsh plugin install` on its own re-triggers the same failure
+ * because the bad resolution is already baked into the lockfile — and only if
+ * that does not compose, uninstall so dsh comes back without the plugin.
+ */
+async function recover(profile, dir, snapshot) {
+  writeFileSync(join(dir, 'package.json'), snapshot.manifest)
+  const lockPath = join(dir, 'pnpm-lock.yaml')
+  if (snapshot.lock !== null) writeFileSync(lockPath, snapshot.lock)
+  run('dsh', ['plugin', '--profile', profile, 'install'], dir)
+  if (run('dsh', ['--profile', profile, '--dump-config'], dir).status === 0) return 'rolled back to the pre-run state'
+  run('dsh', ['plugin', '--profile', profile, 'remove', pkg.name], dir)
+  return `plugin uninstalled from "${profile}"; dsh boots again: ${(await bootProbe(profile)).up}`
+}
+
 /** Relative path + cwd: GNU tar reads "E:\…" as a remote host and fails. */
 function tarOut(args) {
   const r = spawnSync('tar', args, { cwd: repoRoot, encoding: 'utf8' })
@@ -206,15 +252,8 @@ for (const profile of profiles) {
     if (run('dsh', ['--profile', profile, '--dump-config'], dir).status === 0) {
       fail(`add failed, profile still boots:\n${add.out.slice(-2000)}`)
     }
-    console.log('  profile no longer boots — restoring the pre-run manifest and lockfile')
-    writeFileSync(manifestPath, snapshot.manifest)
-    if (snapshot.lock !== null) writeFileSync(lockPath, snapshot.lock)
-    run('dsh', ['plugin', '--profile', profile, 'install'], dir)
-    if (run('dsh', ['--profile', profile, '--dump-config'], dir).status === 0) {
-      fail(`add failed; profile rolled back to its previous state:\n${add.out.slice(-2000)}`)
-    }
-    run('dsh', ['plugin', '--profile', profile, 'remove', pkg.name], dir)
-    fail(`add failed and the previous state could not be restored — dropped the bundles entry so dsh boots again, plugin uninstalled from "${profile}":\n${add.out.slice(-2000)}`)
+    const how = await recover(profile, dir, snapshot)
+    fail(`add failed; ${how}:\n${add.out.slice(-2000)}`)
   }
   console.log('  ok')
 
@@ -238,8 +277,15 @@ for (const profile of profiles) {
     ['bundle patch layer composed (core fs-sandbox swapped)', dump.out.includes(`patched by ${pkg.name}`)],
     ['plugin host + fs rows present in the tree', dump.out.includes(`name: '${pkg.name}'`) && dump.out.includes(`name: '${pkg.name}/fs'`)],
   ]
+  // None of the checks above import an entry, so a host missing an export we
+  // import would pass all of them and still brick the next start. Boot it.
+  const probe = await bootProbe(profile)
+  checks.push(['the profile actually boots with the plugin mounted', probe.up])
   const bad = checks.filter(([, ok]) => !ok)
   for (const [label, ok] of checks) console.log(`  ${ok ? '✓' : '✗'} ${label}`)
-  if (bad.length) fail(`${bad.length} check(s) failed for profile ${profile} — inspect ${dir}`)
+  if (bad.length) {
+    const how = await recover(profile, dir, snapshot)
+    fail(`${bad.length} check(s) failed for profile ${profile}; ${how}\n${probe.out.slice(-1500)}`)
+  }
   console.log(`  pinned to file:${tarball.replace(/\\/g, '/')} — deleting that tarball breaks reinstall`)
 }
