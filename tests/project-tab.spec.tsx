@@ -110,11 +110,12 @@ function fakeCtx(): { ctx: ClientRuntimeContext; chips: Array<{ ref: string; lab
 }
 
 /** Render the tree tab and return the mounted `[data-dsh-codex-project-tab]`
- *  node. Records which files were opened into the preview tab. */
+ *  node. Records which files were opened for reading and which for editing. */
 const mounted: Array<{ root: Root; container: HTMLElement }> = []
 async function renderTab(api: SpacesApi, ctx: ClientRuntimeContext):
-  Promise<{ tab: HTMLElement; opened: string[] }> {
+  Promise<{ tab: HTMLElement; opened: string[]; edited: string[] }> {
   const opened: string[] = []
+  const edited: string[] = []
   const container = document.createElement('div')
   document.body.appendChild(container)
   const root = createRoot(container)
@@ -124,13 +125,14 @@ async function renderTab(api: SpacesApi, ctx: ClientRuntimeContext):
       api,
       scope,
       openPreview: (path) => { opened.push(path) },
+      openEditor: (path) => { edited.push(path) },
     }))
   })
   await act(async () => {})
   mounted.push({ root, container })
   const tab = container.querySelector<HTMLElement>('[data-dsh-codex-project-tab]')
   expect(tab).toBeDefined()
-  return { tab: tab!, opened }
+  return { tab: tab!, opened, edited }
 }
 
 /** Find a tree row whose text content includes `text`. */
@@ -371,7 +373,7 @@ describe('ProjectTab', () => {
     expect(text).not.toContain('下载')
   })
 
-  it('file context menu: 引用到对话 + 下载 present, no 上传到此处', async () => {
+  it('file context menu: 引用到对话 + 编辑 + 下载 present, no 上传到此处', async () => {
     const listing: ProjectListing = {
       path: ROOT_A,
       entries: [
@@ -390,8 +392,33 @@ describe('ProjectTab', () => {
     })
     const text = tab.ownerDocument.body.textContent ?? ''
     expect(text).toContain('引用到对话')
+    expect(text).toContain('编辑')
     expect(text).toContain('下载')
     expect(text).not.toContain('上传到此处')
+  })
+
+  it('the 编辑 menu item hands the file to the plugin editor page', async () => {
+    // The host viewer is read-only, so 编辑 is the route to the pane that can
+    // write back through the plugin's own /write fence.
+    const listing: ProjectListing = {
+      path: ROOT_A,
+      entries: [
+        { name: 'readme.md', path: `${ROOT_A}\\readme.md`, isDir: false, hidden: false, isSymlink: false, broken: false },
+      ],
+      truncated: false,
+    }
+    const fake = fakeApi(PROJECT, { [ROOT_A]: listing })
+    const { tab, edited, opened } = await renderTab(fake.api, fakeCtx().ctx)
+    await act(async () => {
+      rowByText(tab, 'proj (主)').click()
+    })
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)) })
+    await act(async () => {
+      rowByText(tab, 'readme.md').dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }))
+    })
+    await clickMenu('编辑')
+    expect(edited).toEqual([`${ROOT_A}\\readme.md`])
+    expect(opened, 'the menu item does not also open a preview').toEqual([])
   })
 
   it('surfaces a project-fetch error instead of crashing', async () => {

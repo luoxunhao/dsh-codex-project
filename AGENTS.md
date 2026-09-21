@@ -9,12 +9,12 @@
 - **禁止修改 DSH 源码**：对官方仓库（<https://github.com/deepseek-ai/deepseek-harness>）的检出零写入。需要 DSH 没有的能力时，优先用公开/只读 API 或插件自有路由；确实做不到，先向用户说明取舍，不改 DSH。
 - **挂载只走 `cordis.patch.yml` + profile 机制**，插件作为独立包被 profile 引用，不反向侵入 DSH。
 - **client 纯度门**：client bundle 只能 value-import 平台模块白名单（`tsdown.config.ts` 的 `CLIENT_EXTERNALS`）；与其他插件的运行时交互一律走 cordis 服务方法调用，`import type {}` 可共享类型但不产生运行时依赖。
-- **browser bundle 无 `node:path`**：路径字符串运算必须放 `src/client/paths.ts`（`basename` / `relativePath` / `resolvePath` / `samePath`），不许 import node 内置。
+- **browser bundle 无 `node:path`**：路径字符串运算必须放 `src/client/paths.ts`（`basename` / `relativePath` / `resolvePath` / `samePath` / `sessionFileAddress`），不许 import node 内置。
 - **侧边栏只挂原生 DSH 右侧栏**：`ctx.sidebarRightTabs` 注册 page 类型 + `sidebar.right.pane.tab` / `sidebar.right.pane.tab.title` 键控 seat（见 `src/client/native-sidebar.tsx`）。0.1.6 的 web 组合默认自带该承载，所以 better-sidebar 回退线已删（`preview-tab.tsx` 不再存在）。better-sidebar ≥0.19 会把 tab 转发进同一原生面，**再往 `betterSidebar.registerTab` 注册就会出两个 tab**，不要恢复。
 - **别把承载包写进 `dsh.client.inject`**：`@deepseek-ai/dsh-client-ui-sidebar-right` 只被 `import type` 级别地引用（实际全是结构化再声明），而 `dsh.client.inject` 的行是**加载/组合边**（该行工厂必须先到位，cordis 还用它组合 entries），不是「可 value-import 白名单」。它也不在 web shell 的 `PLATFORM_MODULES` 里——加进去等于给一个可选承载加了包级硬耦合，正是 `ctx.inject` 子 fiber 要小心避开的那种绑法。
 - **原生服务的等待方式**：用 `ctx.inject(['sidebarRightTabs','slots','sessions'], cb)` 挂子 fiber，**别**在 `apply` 里 `reflect.get` 一次性探测（本插件与 `ui-sidebar-right` 谁先 apply 由组合顺序决定，一次性探测可能永久漏掉；注意 `ui-sidebar-right` **自己内部**是先 provide `sidebarRightTabs` 再声明 seat，会抢跑的是跨插件这一层，别把这条因果记反）；也**别**把它们加进模块级 `inject` 数组（可选服务进 `inject` 会让整个插件 fiber 永久 pending，连工作区菜单入口一起挂不上）。`ctx.inject` 回调返回的函数由 cordis 当作 disposer 收集，fiber 卸载时自动回收。
 - **传进组件的 runtime ctx 必须显式合成**：cordis 给插件的 `ctx` 是代理，**声明的 `inject` 列之外、又非内置面的服务属性一律读成 `undefined`**——`ctx.sessions` 正是如此（`insertFileReference` 只写 `ctx.sessions?.scope(...)`，拿到 undefined 就静默 return，「引用到对话」不报错也不干活）。所以别把 `ctx` 用 `as never` 塞给 `ClientRuntimeContext`：在 `ctx.inject` 回调里用真正持有的服务拼一张 `{ get, sessions }` 再往下传（见 `src/client/index.tsx`），类型检查才继续在干活。
-- **原生 tab 都是 page 类型**：不声明 `patterns`，只按 kind 打开，绝不与产品自带的文件 viewer 抢 `dsh-resource://file/**`。文件一律交给插件自有的 `codex-project-file` page（走插件自己的多根路由，跨盘共享目录才可预览）。
+- **文件预览优先复用宿主自带 viewer**：树里点文件 → `tab.actions.openResource(sessionFileAddress(sessionId, path))`，地址 `dsh-resource://file/session/<id>/<绝对路径>`。宿主的 `workspaceFiles.read/readBytes/readAll/stat` **不 confine 到会话根**（只有 `list` confine），所以工作区外、跨盘的文件在原生 viewer 里就能读（2026-09-21 真机：JSON / markdown / jpg / PDF，明细见 README 基线表）。插件自有的 `codex-project-file` page 只留宿主给不了的两件事：**编辑写回**（右键「编辑」→ `mode:'edit'`，走插件 `/write` 的多根 fence）和**无扩展名文件的下载**。两个原生 tab 仍不声明 `patterns`、只按 kind 打开，绝不与产品自带的 `dsh-resource://file/**` 抢认领。
 - **fence 只改一处**：所有项目文件操作路由共用 `dirs-api.ts` 的 `fenceFor`；不要另写一份 roots 推导（否则三处漂移）。
 
 ---
@@ -52,10 +52,10 @@ pnpm proto:verify       # 多根 runner 原型实证（Windows ACL，需先 buil
 `tests/`（vitest，browser 组件用 jsdom）：
 
 - `dirs-api.spec.ts` — CRUD + 锚定 + 失效根 + 项目解析 + 目录列表（排序/fence 403/跨盘根）+ 读/写/文件字节与下载 disposition。
-- `project-tab.spec.tsx` — 无配置回退单根、根行（主/共享/缺失）、懒加载、点击把文件交给 `openPreview`（预览页本身在 `native-sidebar.spec.tsx`）、右键菜单。
+- `project-tab.spec.tsx` — 无配置回退单根、根行（主/共享/缺失）、懒加载、点击把文件交给 `openPreview`、右键菜单（含「编辑」交给 `openEditor`；预览页本身在 `native-sidebar.spec.tsx`）。
 - `file-reference.spec.ts` — @ 引用源注册 / 注入 / 序列化。
 - `client-apply.spec.tsx` / `client-components.spec.tsx` — 插件形态、菜单注入、管理弹窗。
-- `native-sidebar.spec.tsx` — 原生右侧栏两阶段注册（type/body/title 的 id 与 key）、page body 经 `tab.actions.openTab` 打开自有预览、`navigation.params` 读取与 chip 标题回退、`useTabInfo` 抛错时的等待态、晚到的 carrier、unload 回收、**传下去的 runtime ctx 真能拿到 `sessions.scope`/`conversation`**（fake 如实建模 cordis 代理会吞掉 `ctx.sessions`）、**同一文件被再次导航（revision 变了）会重读**。
+- `native-sidebar.spec.tsx` — 原生右侧栏两阶段注册（type/body/title 的 id 与 key）、树点击可读文件经 `tab.actions.openResource` 交给宿主 viewer（含 `C:/…` 与 `%E4%B8%AD%E6%96%87` 这类地址构造）、无扩展名文件与「编辑」仍经 `tab.actions.openTab` 走自有 page、`navigation.params` 的 path/mode 读取与 chip 标题回退、`useTabInfo` 抛错时的等待态、晚到的 carrier、unload 回收、**传下去的 runtime ctx 真能拿到 `sessions.scope`/`conversation`**（fake 如实建模 cordis 代理会吞掉 `ctx.sessions`）、**同一文件被再次导航（revision 变了）会重读**。
 - `native-sidebar-composition.spec.ts` — 拿真实 `SlotCore` 验证键控 seat：未声明的 seat 注册不抛（这正是走 `slots.inject` 而非直接 `register` 的理由）、声明后落两个 key、dispose 全回收。
 - `fs-fence.spec.ts` / `seam-wiring.spec.ts` — 多根 fence 收窄/隔离/自愈、runner 接线。
 - `context-injection.spec.ts` — 上下文提醒（文本组成/折叠位置/去重/缺失标注）。

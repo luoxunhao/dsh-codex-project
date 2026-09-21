@@ -26,7 +26,7 @@ Codex 处理项目时，一个"项目"往往横跨多个目录：主代码库、
 |---|---|
 | 共享子目录配置 | 每个工作区可配置任意数量共享子目录（跨盘符、可裸目录） |
 | 「管理工作区」弹窗 | 原生工作区「…」菜单注入入口：添加/移除共享子目录 |
-| 「项目文件夹」tab | 侧边栏注册的项目多根目录树：主根 + 共享子目录（跨盘符），按层懒加载；仿 Files tab 布局（顶部搜索框 + 刷新/上传按钮 + 文件树，点击文件在插件自有的「文件预览」page 内打开），右键目录用文件管理器打开。**承载走 DSH 原生右侧栏**（`ctx.sidebarRightTabs` + `sidebar.right.pane.tab` 键控 seat，0.1.6 的 web 组合默认自带） |
+| 「项目文件夹」tab | 侧边栏注册的项目多根目录树：主根 + 共享子目录（跨盘符），按层懒加载；仿 Files tab 布局（顶部搜索框 + 刷新/上传按钮 + 文件树）。点击文件交给 **DSH 自带的文件 viewer**（`openResource`，工作区外/跨盘一样能读）；右键「编辑」在插件自有的「文件预览」page 里开编辑器，右键目录用文件管理器打开。**承载走 DSH 原生右侧栏**（`ctx.sidebarRightTabs` + `sidebar.right.pane.tab` 键控 seat，0.1.6 的 web 组合默认自带） |
 | 「打开本地目录」 | 原生「…」菜单注入入口：用系统文件管理器打开该工作区文件夹（插件自有路由 spawn explorer.exe——不走 workspaces.openPath，避免被 better-sidebar 等插件劫持到侧边栏编辑器） |
 | 多根沙箱 runner | 命中配置的会话，shell/subprocess 自动走多根受限令牌（`lib/runner.js`） |
 | 多根 fs fence | 进程内 fs 工具（read/write/edit）同样按配置可写根放行（`lib/fs.js`） |
@@ -42,7 +42,7 @@ Codex 处理项目时，一个"项目"往往横跨多个目录：主代码库、
 │  (client half)                                                        │
 │  侧边栏工作区「…」菜单 ──注入「打开本地目录」+「管理工作区」──▶ 本地动作/弹窗  │
 │  「项目文件夹」tab ──注册进 DSH 原生右侧栏（sidebarRightTabs + seat）  │
-│        │              └ 文件在插件自有的「文件预览」page 内打开        │
+│        │              └ 点击→宿主自带 viewer；「编辑」→自有 page  │
 │        │ fetch()                                                      │
 │        ▼                                                              │
 │  /codex-project/api  (CRUD + 项目目录树，loopback 守卫)                │
@@ -260,7 +260,7 @@ pnpm proto:verify       # 多根 runner 原型实证（Windows ACL，需先 buil
 - client bundle 禁止 value-import 其他插件的运行时符号（纯度门）；与 DSH 源码的集成只走公开/只读 API；
 - browser bundle 无 `node:path`——路径运算放 `src/client/paths.ts`；
 - 「项目文件夹」「文件预览」注册进 DSH 原生右侧栏（`ctx.sidebarRightTabs` + 键控 `sidebar.right.pane.tab` / `.title` seat，见 `src/client/native-sidebar.tsx`），只走公开面，client 侧用结构化再声明消费（`src/client/context.ts`）。所需服务经 `ctx.inject(['sidebarRightTabs','slots','sessions'], …)` **等待**而非一次性探测；该承载包因此**不写进 `dsh.client.inject`**（那是加载/组合边，也不是 `PLATFORM_MODULES`）。往下传给组件的 runtime ctx 是**合成**出来的 `{ get, sessions }`——插件自己的 `ctx` 是 cordis 代理，`ctx.sessions` 读出来就是 `undefined`，直接传下去会让「引用到对话」静默失效。better-sidebar ≥0.19 会把 tab 转发进同一原生面，所以**不再往 `betterSidebar.registerTab` 注册**（注册了就会出两个「项目文件夹」）；
-- 原生两个 type（`codex-project` / `codex-project-file`）都是 **page 类型**（不声明 `patterns`），不与产品自带的 `dsh-resource://file/**` viewer 抢地址；文件预览走插件自有多根路由，跨盘共享目录才可预览；
+- 原生两个 type（`codex-project` / `codex-project-file`）都是 **page 类型**（不声明 `patterns`），不与产品自带的 `dsh-resource://file/**` viewer 抢地址。读文件反而**主动交给**那个 viewer：`openResource('dsh-resource://file/session/<id>/<绝对路径>')`，宿主 `workspaceFiles` 的 `read/readBytes/readAll/stat` 不 confine 到会话根（只有 `list` confine），所以工作区外与跨盘文件都能原生预览；插件自有的 `codex-project-file` page 只承担宿主做不到的两件事——**编辑写回**（走插件 `/write` 的多根 fence）与**无扩展名文件的下载**；
 - fence 只改一处：复用 `dirs-api.ts` 的 `fenceFor`，不要另写一份 roots 推导。
 
 ## 宿主版本基线（0.1.6-alpha.2）
@@ -268,7 +268,7 @@ pnpm proto:verify       # 多根 runner 原型实证（Windows ACL，需先 buil
 | 项 | 值 |
 |---|---|
 | peer 范围 | `@deepseek-ai/dsh-*` 一律 `^0.1.6-alpha.2` |
-| 验证基线 | **DSH 0.1.6-alpha.2**（`dsh plugin --profile web add <本仓库>` 装进 `web` profile → `dsh web`）。**2026-09-20 真机重验通过**，挂载面那两条改动（`ctx.inject` 依赖表加 `sessions`、`dsh.client.inject` 摘掉承载包）不再是欠账：原生右侧栏 tab 条出现「项目文件夹」并可打开；根行展开的目录列表走插件自有多根路由；点文件开 `codex-project-file` 预览 tab（markdown 正常渲染）；切「编辑」CodeMirror 正常挂载，未脏时「保存」为 disabled；右键「引用到对话」真的把引用插进了输入框——即合成 `{ get, sessions }` 那条在真宿主上生效，不是只被 jsdom fake 建模。`pnpm typecheck` / `pnpm test` 225 用例 / `pnpm build` 全绿，控制台零报错（唯一警告来自无关的 dsh-dream-skin，外观类）。`/adddir` 的 native 门控也在真机上复验过：`/` 菜单里 `/adddir` 正常在册（54 项）。两点保留：**本次是 `link:` 指向本地构建**（npm 上只有 0.11.0，非发布版路径）；**「重复点击同一文件会重读」一项本轮未测** |
+| 验证基线 | **DSH 0.1.6-alpha.2**（`dsh plugin --profile web add <本仓库>` 装进 `web` profile → `dsh web`）。**2026-09-20 真机重验通过**，挂载面那两条改动（`ctx.inject` 依赖表加 `sessions`、`dsh.client.inject` 摘掉承载包）不再是欠账：原生右侧栏 tab 条出现「项目文件夹」并可打开；根行展开的目录列表走插件自有多根路由；点文件开 `codex-project-file` 预览 tab（markdown 正常渲染）；切「编辑」CodeMirror 正常挂载，未脏时「保存」为 disabled；右键「引用到对话」真的把引用插进了输入框——即合成 `{ get, sessions }` 那条在真宿主上生效，不是只被 jsdom fake 建模。`pnpm typecheck` / `pnpm test` 225 用例 / `pnpm build` 全绿，控制台零报错（唯一警告来自无关的 dsh-dream-skin，外观类）。`/adddir` 的 native 门控也在真机上复验过：`/` 菜单里 `/adddir` 正常在册（54 项）。两点保留：**本次是 `link:` 指向本地构建**（npm 上只有 0.11.0，非发布版路径）；**「重复点击同一文件会重读」一项本轮未测**。**2026-09-21 追加真机验证（预览改走宿主自带 viewer）**：会话根之外、且在另一个盘（C:）的 JSON / markdown / jpg / PDF 都能在原生 tab 里读出来（markdown 全文渲染、`img` naturalWidth 3840×2160、PDF canvas 793×1122、无扩展名文件仍落回自有 page 的下载），`tab.actions.openResource` 在该宿主确实存在，地址里的 `C:` 冒号按字面保留也能被解析；同轮补测写回：右键「编辑」开自有 page 直接进编辑器（CodeMirror host 不 hidden），改文本后「保存」由 disabled 转可点，Ctrl+S 之后磁盘文件真的变了——目标在会话根之外，但**与主根同盘**，跨盘符那一条只验到读。**09-21 那轮的欠账**：浏览器面板未开，只有 DOM 结构证据、无视觉截图；超长文件靠滚动续读的分页、跨盘文件的实时刷新（change feed 按会话根过滤，仅代码层判断）、会话切换与多 pane 下 `openResource` 的落点，都未实测 |
 | `@deepseek-ai/cordis` | `^4.0.2`（与 DSH `vendor/cordis` 同版） |
 
 **三个必须知道的坑**（升级时踩过，别再踩）：
@@ -287,7 +287,7 @@ pnpm proto:verify       # 多根 runner 原型实证（Windows ACL，需先 buil
 - `project-tab.spec.tsx` — 无配置回退单根、根行（主/共享/缺失）、懒加载、点击把文件交给 `openPreview`、右键菜单
 - `file-reference.spec.ts` — @ 引用源注册 / 注入 / 序列化
 - `client-apply.spec.tsx` / `client-components.spec.tsx` — 插件形态、菜单注入、管理弹窗
-- `native-sidebar.spec.tsx` — 原生右侧栏两阶段注册（type/body/title 的 id 与 key）、page body 经 `tab.actions.openTab` 打开自有预览、`navigation.params` 与 chip 标题回退、`useTabInfo` 抛错时的等待态、晚到的 carrier、unload 回收、合成 runtime ctx 真能拿到 `sessions.scope`/`conversation`、同一文件再次导航（`revision` 变）会重读
+- `native-sidebar.spec.tsx` — 原生右侧栏两阶段注册（type/body/title 的 id 与 key）、树点击可读文件经 `tab.actions.openResource` 交给宿主 viewer（含盘符与中文/空格/`#` 的地址构造）、无扩展名文件与「编辑」经 `tab.actions.openTab` 走自有 page、`navigation.params` 的 path/mode 与 chip 标题回退、`useTabInfo` 抛错时的等待态、晚到的 carrier、unload 回收、合成 runtime ctx 真能拿到 `sessions.scope`/`conversation`、同一文件再次导航（`revision` 变）会重读
 - `native-sidebar-composition.spec.ts` — 用真实 `SlotCore` 验证键控 seat 的声明/落位/回收（未声明 seat 不抛，正是走 `slots.inject` 的理由）
 - `fs-fence.spec.ts` / `seam-wiring.spec.ts` — 多根 fence 收窄/隔离/自愈、runner 接线
 - `context-injection.spec.ts` — 上下文提醒（文本组成/折叠位置/去重/缺失标注）

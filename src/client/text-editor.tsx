@@ -63,6 +63,8 @@ export interface TextEditorProps {
   content: string
   truncated: boolean
   kind: 'markdown' | 'html' | 'code'
+  /** Start in the editor rather than this kind's default view. */
+  initialMode?: 'edit'
 }
 
 /** A CodeMirror 6 language for a file extension (null → plain text). */
@@ -102,7 +104,8 @@ const cmTheme = CodeMirrorView.theme({
 
 /**
  * The code/markdown/html editor. Markdown/html start in preview mode
- * (rendered output); code files start in edit mode. The CodeMirror view is
+ * (rendered output); code files start in edit mode, and `initialMode: 'edit'`
+ * puts any kind there directly. The CodeMirror view is
  * created once per file path and kept alive, so toggling modes never loses an
  * un-saved draft; `content` re-seeds the view only when the file changes.
  *
@@ -112,8 +115,10 @@ const cmTheme = CodeMirrorView.theme({
  * editor blank until the file changes.
  */
 export function TextEditor(props: TextEditorProps): ReactNode {
-  const { api, cwd, path, content, truncated, kind } = props
-  const [mode, setMode] = useState<ViewMode>(kind === 'code' ? 'edit' : 'preview')
+  const { api, cwd, path, content, truncated, kind, initialMode } = props
+  const [mode, setMode] = useState<ViewMode>(
+    initialMode === 'edit' ? 'edit' : kind === 'code' ? 'edit' : 'preview',
+  )
   /** The on-disk text (last saved / as-read); the editor diff-reports against it. */
   const [base, setBase] = useState(content)
   const baseRef = useRef(content)

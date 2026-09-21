@@ -21,12 +21,14 @@
  * route, fenced to the project roots on the host. Rows mirror the explorer
  * metrics via the shared `--dsw-*` tokens.
  *
- * Row interactions: expand/collapse a directory; open a file in the preview
- * tab; right-click a row for a context menu — 引用到对话 (file or directory),
- * a file offers 下载, a directory offers 用文件管理器打开 / 上传到此处 (upload files
- * into that folder), and every row can copy its relative / absolute path. The
- * old hover-revealed `@` button was removed — referencing lives in the context
- * menu now.
+ * Row interactions: expand/collapse a directory; open a file in the host's own
+ * file viewer (a binary file, which that viewer cannot render, goes to the
+ * plugin's preview page instead); right-click a row for a context menu —
+ * 引用到对话 (file or directory), a file offers 编辑 (the plugin's own page,
+ * straight into the editor) and 下载, a directory offers 用文件管理器打开 /
+ * 上传到此处 (upload files into that folder), and every row can copy its
+ * relative / absolute path. The old hover-revealed `@` button was removed —
+ * referencing lives in the context menu now.
  * @module dsh-codex-project/client/project-tab
  */
 
@@ -34,6 +36,7 @@ import { useCallback, useEffect, useRef, useState, type MouseEvent, type ReactNo
 import {
   IconCopyOutline16,
   IconDownloadOutline16,
+  IconEditOutline16,
   IconFolderClose16,
   IconFolderOpen16,
   IconFolderOpenOutline16,
@@ -49,15 +52,18 @@ import type { ProjectEntry, ProjectListing, ProjectSearchResult, ProjectView, Sp
 import type { ClientRuntimeContext, SidebarTabScope } from './context.ts'
 import { insertFileReference } from './file-reference.ts'
 import { basename, relativePath, resolvePath } from './paths.ts'
+import { viewerKindForPath } from './viewer.ts'
 
 /** The tab's render props: the client ctx, the dirs API, the session scope, and
- *  how to open a file's preview (into a separate sidebar tab). */
+ *  the two ways to open a file — the host viewer / the plugin's own editor. */
 export interface ProjectTabProps {
   ctx: ClientRuntimeContext
   api: SpacesApi
   scope: SidebarTabScope
-  /** Open a file's preview in its own sidebar tab. */
+  /** Open a file for reading: the host's own viewer, or the plugin's page for a binary file. */
   openPreview: (path: string) => void
+  /** Open a file in the plugin's own page, straight into the editor. */
+  openEditor: (path: string) => void
 }
 
 /** One top-level project root. */
@@ -74,7 +80,7 @@ type RowMenuState = { path: string; isFile: boolean; x: number; y: number } | nu
  * @param props - the client ctx, the dirs API, the session scope, and openPreview.
  */
 export function ProjectTab(props: ProjectTabProps): ReactNode {
-  const { ctx, api, scope, openPreview } = props
+  const { ctx, api, scope, openPreview, openEditor } = props
   const cwd = scope.cwd
   const [project, setProject] = useState<ProjectView | null | undefined>(undefined)
   const [error, setError] = useState<string | null>(null)
@@ -381,6 +387,11 @@ export function ProjectTab(props: ProjectTabProps): ReactNode {
           ...(rowMenu !== null && rowMenu.isFile
             ? [{ id: 'download', label: '下载', icon: <IconDownloadOutline16 size={14} /> }]
             : []),
+          // 编辑 only where the plugin's page has something to edit — a binary
+          // file opens there already, for its download.
+          ...(rowMenu !== null && rowMenu.isFile && viewerKindForPath(rowMenu.path) !== 'binary'
+            ? [{ id: 'edit', label: '编辑', icon: <IconEditOutline16 size={14} /> }]
+            : []),
           ...(rowMenu !== null && !rowMenu.isFile
             ? [{ id: 'open-dir', label: '用文件管理器打开', icon: <IconFolderOpenOutline16 size={14} /> }]
             : []),
@@ -394,6 +405,7 @@ export function ProjectTab(props: ProjectTabProps): ReactNode {
           if (id === 'reference') { reference(target.path, !target.isFile); return }
           if (id === 'open-dir') { openDir(target.path); return }
           if (id === 'download') { downloadFile(target.path); return }
+          if (id === 'edit') { openEditor(target.path); return }
           if (id === 'upload-here') { openUploadPicker(target.path); return }
           copyPath(
             id === 'relative' ? relativePath(cwd ?? '', target.path) : target.path,

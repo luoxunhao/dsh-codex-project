@@ -24,6 +24,7 @@ const hoisted = vi.hoisted(() => ({
     ctx: { get(name: string): unknown; sessions?: { scope(id: string): unknown } }
     scope: { cwd?: string }
     openPreview: (path: string) => void
+    openEditor: (path: string) => void
   }>,
 }))
 
@@ -32,6 +33,7 @@ vi.mock('../src/client/project-tab.tsx', () => ({
     ctx: { get(name: string): unknown; sessions?: { scope(id: string): unknown } }
     scope: { cwd?: string }
     openPreview: (path: string) => void
+    openEditor: (path: string) => void
   }) => {
     hoisted.props.push(props)
     return null
@@ -51,6 +53,7 @@ import {
   NativeProjectTab,
   fileDefinition,
   previewPathOf,
+  previewModeOf,
   projectDefinition,
 } from '../src/client/native-sidebar.tsx'
 
@@ -307,7 +310,7 @@ function tabInfoFor(kind: string, params?: unknown, title = '文件预览'): Tab
       kind,
       title,
       navigation: { ...(params === undefined ? {} : { params }), revision: 1 },
-      actions: { openTab: vi.fn() },
+      actions: { openTab: vi.fn(), openResource: vi.fn() },
     },
   }
   const read = (() => info) as TabInfoReader
@@ -340,18 +343,55 @@ describe('项目文件夹 page body', () => {
     hoisted.props.length = 0
   })
 
-  it('opens a tree row in the plugin OWN preview page, through the tab actions', async () => {
+  it('hands a readable row to the HOST own viewer as a session file address', async () => {
     // The body's only navigation channel is the record it was bound to, so the
-    // open lands in this tab's panel and session — a service-level openTab
-    // would have neither.
+    // open lands in this tab's panel and session — a service-level open would
+    // have neither. The Host read behind that address is not confined to the
+    // Session root, which is why a shared directory previews here too.
     const useTabInfo = tabInfoFor(PROJECT_KIND, undefined, '项目文件夹')
     await render(createElement(NativeProjectTab, bodyProps(useTabInfo)))
     const props = hoisted.props.at(-1)
     expect(props?.scope).toEqual({ sessionId: 's1', cwd: 'E:\\proj' })
 
     props?.openPreview('E:\\shared\\notes.md')
+    expect(useTabInfo().tab.actions.openResource).toHaveBeenCalledWith(
+      'dsh-resource://file/session/s1/E:/shared/notes.md',
+    )
+    expect(useTabInfo().tab.actions.openTab).not.toHaveBeenCalled()
+
+    // Per-segment encoding: the drive colon stays literal (the grammar keeps it
+    // there), everything the address reserves for itself does not.
+    props?.openPreview('C:\\tmp\\第 1 版#draft?.pdf')
+    expect(useTabInfo().tab.actions.openResource).toHaveBeenLastCalledWith(
+      'dsh-resource://file/session/s1/C:/tmp/%E7%AC%AC%201%20%E7%89%88%23draft%3F.pdf',
+    )
+  })
+
+  it('keeps a name with no extension on the plugin page, where it can be downloaded', async () => {
+    // The host viewer classifies by extension; with none it reports the file as
+    // unviewable and offers nothing else, while the plugin's own pane answers
+    // with a download link. So the unclassifiable name never travels as a
+    // resource address.
+    const useTabInfo = tabInfoFor(PROJECT_KIND, undefined, '项目文件夹')
+    await render(createElement(NativeProjectTab, bodyProps(useTabInfo)))
+    const props = hoisted.props.at(-1)
+
+    props?.openPreview('E:\\shared\\LICENSE')
+    expect(useTabInfo().tab.actions.openResource).not.toHaveBeenCalled()
     expect(useTabInfo().tab.actions.openTab).toHaveBeenCalledWith(FILE_KIND, {
-      params: { path: 'E:\\shared\\notes.md' },
+      params: { path: 'E:\\shared\\LICENSE' },
+    })
+  })
+
+  it('opens 编辑 on the plugin page, aimed straight at the editor', async () => {
+    const useTabInfo = tabInfoFor(PROJECT_KIND, undefined, '项目文件夹')
+    await render(createElement(NativeProjectTab, bodyProps(useTabInfo)))
+    const props = hoisted.props.at(-1)
+
+    props?.openEditor('E:\\shared\\notes.md')
+    expect(useTabInfo().tab.actions.openResource).not.toHaveBeenCalled()
+    expect(useTabInfo().tab.actions.openTab).toHaveBeenCalledWith(FILE_KIND, {
+      params: { path: 'E:\\shared\\notes.md', mode: 'edit' },
     })
   })
 
@@ -396,6 +436,14 @@ describe('文件预览 page navigation', () => {
     expect(previewPathOf(null)).toBeUndefined()
   })
 
+  it('reads the aimed mode, and keeps the default when the params say nothing', () => {
+    expect(previewModeOf({ path: 'E:\\a.md', mode: 'edit' })).toBe('edit')
+    expect(previewModeOf({ path: 'E:\\a.md' })).toBeUndefined()
+    expect(previewModeOf({ path: 'E:\\a.md', mode: 'preview' })).toBeUndefined()
+    expect(previewModeOf({ path: 42 })).toBeUndefined()
+    expect(previewModeOf(undefined)).toBeUndefined()
+  })
+
   it('titles the chip with the current file name, not the captured one', async () => {
     // The page deduplicates per pane, so the chip must follow the navigation
     // rather than the title captured when the tab first opened.
@@ -423,9 +471,9 @@ describe('文件预览 page navigation', () => {
   })
 
   it('reads the navigated file through the plugin API, anchored at the session cwd', async () => {
-    // The page carries the file, the session carries the cwd, and the plugin's
-    // own multi-root routes are what reach a cross-drive shared directory — so
-    // the read must be (cwd, path) through `api`, not a host file resource.
+    // The page carries the file, the session carries the cwd, and this pane is
+    // the one that WRITES back — so the read goes through `api` (cwd, path),
+    // not the host file resource the viewer uses.
     const { api, reads } = previewApi('# Title\n\nsome *text*')
     const container = await render(createElement(NativeFileTab, {
       ...bodyProps(tabInfoFor(FILE_KIND, { path: 'E:\\proj\\notes.md' })),
@@ -437,6 +485,23 @@ describe('文件预览 page navigation', () => {
     const markdown = container.querySelector('.dsh-cxp-preview-markdown')
     expect(markdown, 'markdown preview host is present').not.toBeNull()
     expect(markdown!.querySelector('h1')?.textContent).toBe('Title')
+    // Default mode is the rendered preview, so the editor host stays mounted
+    // but hidden (AGENTS.md §5: unmounting it would leave a blank editor).
+    expect(container.querySelector('.dsh-cxp-preview-cm')?.hasAttribute('hidden')).toBe(true)
+  })
+
+  it('opens an edit-aimed page straight in the editor', async () => {
+    // The tree's 「编辑」 is the reason this page still exists: the host viewer
+    // is read-only. `mode: 'edit'` must skip the markdown preview.
+    const { api } = previewApi('# Title\n\nsome *text*')
+    const container = await render(createElement(NativeFileTab, {
+      ...bodyProps(tabInfoFor(FILE_KIND, { path: 'E:\\proj\\notes.md', mode: 'edit' })),
+      api,
+    }))
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)) })
+
+    expect(container.querySelector('.dsh-cxp-preview-cm')?.hasAttribute('hidden')).toBe(false)
+    expect(container.querySelector('.dsh-cxp-preview-markdown')).toBeNull()
   })
 
   it('re-reads the SAME file when the page is navigated to it again', async () => {

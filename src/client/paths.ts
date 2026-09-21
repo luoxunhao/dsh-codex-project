@@ -46,6 +46,27 @@ export function relativePath(from: string, target: string): string {
   return parts.join('/')
 }
 
+/**
+ * The session-scoped file address the host's own viewers claim
+ * (`dsh-resource://file/session/<sessionId>/<path>`). The Host resolves the
+ * path against that Session's workspace root when it is relative, and takes an
+ * absolute path as it is; the read is not confined to the root.
+ *
+ * Segments are percent-encoded individually, which is what the host's parser
+ * decodes back (a name carrying `#`, `?`, a space or non-ASCII survives); the
+ * drive separator of `C:` stays literal because the grammar keeps it there.
+ * @param sessionId - the Session whose Host workspace resolves a relative path.
+ * @param path - absolute or workspace-relative path; `\` becomes `/`.
+ * @returns the address to hand to `openResource`.
+ */
+export function sessionFileAddress(sessionId: string, path: string): string {
+  const normalized = path.replace(/\\/g, '/').replace(/^(?:\.\/)+/, '')
+  const encoded = normalized.split('/').map(segment => {
+    return encodeURIComponent(segment).replace(/%3A/gi, ':')
+  }).join('/')
+  return `dsh-resource://file/session/${encodeURIComponent(sessionId)}/${encoded}`
+}
+
 /** Matches a Windows drive prefix or a rooted (UNC/slash) path. */
 const ABS_RE = /^([a-zA-Z]:[\\/]|[\\/])/
 

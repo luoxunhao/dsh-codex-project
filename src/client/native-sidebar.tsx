@@ -13,10 +13,14 @@
  * Both kinds are PAGE types (`patterns` omitted): they are opened by kind
  * (`tab.actions.openTab`), never by a `dsh-resource://` address, so the plugin
  * never competes with the product's own file viewers — a file inside the
- * session workspace keeps opening in whatever type already claims it, and the
- * tree hands its rows to the plugin's OWN preview tab (which reads through the
- * plugin's multi-root routes and therefore also reaches cross-drive shared
- * directories the host's workspace fence refuses).
+ * session workspace keeps opening in whatever type already claims it.
+ *
+ * A tree row hands a readable file to the HOST's own viewer through
+ * `tab.actions.openResource` (see `sessionFileAddress`): the host read is not
+ * confined to the Session workspace root, so a shared directory on another
+ * drive previews there like anything else. The plugin's own 文件预览 page is
+ * what the host viewer does not do — editing a file through the plugin's write
+ * route, and downloading a file the viewer cannot render.
  * @module dsh-codex-project/client/native-sidebar
  */
 import { createElement, useCallback, useSyncExternalStore, type ReactNode } from 'react'
@@ -32,9 +36,10 @@ import type {
   SlotsService,
   SidebarTabScope,
 } from './context.ts'
-import { basename } from './paths.ts'
+import { basename, sessionFileAddress } from './paths.ts'
 import { ProjectTab } from './project-tab.tsx'
 import { PreviewPane } from './preview-pane.tsx'
+import { viewerKindForPath } from './viewer.ts'
 
 /** The 项目文件夹 page type's kind (the value `openTab` names). */
 export const PROJECT_KIND = 'codex-project'
@@ -49,14 +54,18 @@ export const FILE_KIND = 'codex-project-file'
 export const FILE_ID = '@luoxunhao/dsh-codex-project/file'
 
 /**
- * The `params` a 文件预览 page carries: the absolute file it shows. The
- * plugin's own preview tab is a page without `multiple` (the pane keeps one per
+ * The `params` a 文件预览 page carries: the absolute file it shows, and the
+ * mode it opens in. `'edit'` comes from the tree's 「编辑」 menu item; absent
+ * means the pane's own default for the file's kind.
+ *
+ * The plugin's own preview tab is a page without `multiple` (the pane keeps one per
  * kind per pane), so opening a second file NAVIGATES the open one instead of
  * stacking a tab — and `navigation.revision`, which ticks on every navigation
  * whether or not the params changed, is what tells the body to re-read.
  */
 export interface FilePreviewParams {
   path: string
+  mode?: 'edit'
 }
 
 /**
@@ -73,6 +82,17 @@ export function previewPathOf(params: unknown): string | undefined {
   if (typeof params !== 'object' || params === null) return undefined
   const path = (params as Partial<FilePreviewParams>).path
   return typeof path === 'string' && path !== '' ? path : undefined
+}
+
+/**
+ * Read the aimed mode of a 文件预览 page: `'edit'` only when the opener said
+ * so, so a hand-written or absent params bag keeps the pane's own default.
+ * @param params - the tab's current `navigation.params`.
+ * @returns `'edit'`, or undefined for the default mode.
+ */
+export function previewModeOf(params: unknown): 'edit' | undefined {
+  if (typeof params !== 'object' || params === null) return undefined
+  return (params as Partial<FilePreviewParams>).mode === 'edit' ? 'edit' : undefined
 }
 
 /** The folder glyph the guide capsule and the chip title draw. */
@@ -217,12 +237,24 @@ export function NativeProjectTab(props: NativeTabBodyProps): ReactNode {
     return <TabNote text="等待工作区…" />
   }
   const { tab } = info
-  // A row hands the file to the plugin's OWN preview page, which reads through
-  // the plugin's multi-root routes: cross-drive shared dirs preview fine,
-  // unlike the host-fenced native file viewer. The page has no `multiple`, so
-  // a second file navigates the open one rather than stacking a tab.
+  // A readable row goes to the host's own viewer: it renders more than the
+  // plugin's pane does (office documents, real PDF paging, syntax themes) and
+  // reads through the same Host, whose file read is not confined to the
+  // Session root. A name the viewer has nothing to classify by — no extension
+  // — stays on the plugin's page, which offers a download instead of a dead
+  // "无法预览".
   const openPreview = (path: string): void => {
+    if (viewerKindForPath(path) !== 'binary') {
+      tab.actions.openResource(sessionFileAddress(sessionId, path))
+      return
+    }
     const params: FilePreviewParams = { path }
+    tab.actions.openTab(FILE_KIND, { params })
+  }
+  // 编辑 is the other half the host viewer lacks: the plugin's page, aimed at
+  // the file and opened straight into the editor.
+  const openEditor = (path: string): void => {
+    const params: FilePreviewParams = { path, mode: 'edit' }
     tab.actions.openTab(FILE_KIND, { params })
   }
   // `ProjectTab` carries the tab shell itself (its own root is the
@@ -233,6 +265,7 @@ export function NativeProjectTab(props: NativeTabBodyProps): ReactNode {
       api={api}
       scope={scope}
       openPreview={openPreview}
+      openEditor={openEditor}
     />
   )
 }
@@ -261,7 +294,13 @@ export function NativeFileTab(props: NativeTabBodyProps): ReactNode {
   if (cwd === undefined || cwd === '') return <TabNote text="等待工作区…" />
   return (
     <div className="dsh-cxp-tab" data-dsh-codex-project-tab>
-      <PreviewPane key={`${path}#${navigation?.revision ?? 0}`} api={api} cwd={cwd} path={path} />
+      <PreviewPane
+        key={`${path}#${navigation?.revision ?? 0}`}
+        api={api}
+        cwd={cwd}
+        path={path}
+        initialMode={previewModeOf(navigation?.params)}
+      />
     </div>
   )
 }

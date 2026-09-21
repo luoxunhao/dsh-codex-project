@@ -69,8 +69,8 @@ export interface NativeTabNavigation {
  * The live tab information the framework binds for every tab body and title:
  * the record, where it navigated, and the actions bound to THIS tab's panel
  * and session. Restated to the members the plugin calls — the rest of the
- * upstream shape (sidebar/panel geometry, the abort signal, `openResource`,
- * `close`) has no consumer here, and adding one is what grows this face.
+ * upstream shape (sidebar/panel geometry, the abort signal, `close`) has no
+ * consumer here, and adding one is what grows this face.
  */
 export interface NativeTabInfo {
   tab: NativeTabRecord & {
@@ -78,6 +78,11 @@ export interface NativeTabInfo {
     actions: {
       /** Open a page of a registered kind, optionally aimed at params. */
       openTab(kind: string, options?: { params?: unknown }): void
+      /**
+       * Open a resource address; the registry hands it to whichever type claims
+       * that address, so the host's own file viewer is reached this way.
+       */
+      openResource(address: string, options?: { params?: unknown }): void
     }
   }
 }

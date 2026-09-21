@@ -21,6 +21,11 @@ export interface PreviewPaneProps {
   api: SpacesApi
   cwd: string
   path: string
+  /**
+   * Open straight into the editor instead of the pane's per-kind default —
+   * what the tree's 「编辑」 menu item asks for.
+   */
+  initialMode?: 'edit'
 }
 
 /** A native-browser PDF viewer over a Blob URL (mirrors better-sidebar). */
@@ -38,7 +43,7 @@ function PdfView(props: { url: string; title: string }): ReactNode {
  * @param props - the dirs API, the session cwd, and the file path to preview.
  */
 export function PreviewPane(props: PreviewPaneProps): ReactNode {
-  const { api, cwd, path } = props
+  const { api, cwd, path, initialMode } = props
   const kind: ViewerKind = viewerKindForPath(path)
   const [load, setLoad] = useState<
     | { status: 'loading' }
@@ -142,7 +147,7 @@ export function PreviewPane(props: PreviewPaneProps): ReactNode {
     body = <PdfView url={pdfUrl} title={basename(path)} />
   } else {
     const textKind: 'markdown' | 'html' | 'code' = kind === 'markdown' ? 'markdown' : kind === 'html' ? 'html' : 'code'
-    body = <TextEditor api={api} cwd={cwd} path={path} content={content} truncated={truncated} kind={textKind} />
+    body = <TextEditor api={api} cwd={cwd} path={path} content={content} truncated={truncated} kind={textKind} initialMode={initialMode} />
   }
 
   return (
