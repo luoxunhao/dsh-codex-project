@@ -277,10 +277,21 @@ for (const profile of profiles) {
     ['bundle patch layer composed (core fs-sandbox swapped)', dump.out.includes(`patched by ${pkg.name}`)],
     ['plugin host + fs rows present in the tree', dump.out.includes(`name: '${pkg.name}'`) && dump.out.includes(`name: '${pkg.name}/fs'`)],
   ]
-  // None of the checks above import an entry, so a host missing an export we
-  // import would pass all of them and still brick the next start. Boot it.
+  // The invariant behind the 0.14.0 outage: a second copy of a host module in
+  // the profile's hoisted node_modules binds our bundle to a different instance
+  // than the host uses, and dsh-tools keys its runtime scheduler on a
+  // module-level Symbol — every tool call in every conversation then dies with
+  // "Cannot read properties of undefined (reading 'prepare')" while the profile
+  // still boots clean. Neither --dump-config nor the boot probe can see that.
+  const loaderResolved = ['dsh-llm', 'dsh-tools', 'dsh-fs', 'dsh-fs-sandbox', 'dsh-sandbox', 'dsh-sandbox-policy', 'dsh-user-approval']
+  const duplicated = loaderResolved.filter((name) => existsIncludingBrokenLink(join(dir, 'node_modules', '@deepseek-ai', name)))
+  // Boot it too: --dump-config composes the tree but never imports an entry, so
+  // a host missing an export we import would pass every static check above.
   const probe = await bootProbe(profile)
-  checks.push(['the profile actually boots with the plugin mounted', probe.up])
+  checks.push(
+    [duplicated.length ? `a host module is duplicated in the profile: ${duplicated.join(', ')}` : 'no second copy of a host module the loader resolves for us', duplicated.length === 0],
+    ['the profile actually boots with the plugin mounted', probe.up],
+  )
   const bad = checks.filter(([, ok]) => !ok)
   for (const [label, ok] of checks) console.log(`  ${ok ? '✓' : '✗'} ${label}`)
   if (bad.length) {
