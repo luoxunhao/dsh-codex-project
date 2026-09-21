@@ -252,7 +252,7 @@ client 改动浏览器硬刷新即可；host 改动（路由、seam、fs、runne
 
 ```bash
 pnpm typecheck          # 类型检查（tsc --noEmit）
-pnpm test               # 单元测试（vitest，18 个文件 / 234 用例）
+pnpm test               # 单元测试（vitest，18 个文件 / 242 用例）
 pnpm build              # 构建 lib/（tsc types + tsdown：host ESM + client CJS + runner + fs）
 pnpm proto:verify       # 多根 runner 原型实证（Windows ACL，需先 build）
 ```
