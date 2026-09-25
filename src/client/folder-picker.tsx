@@ -21,7 +21,7 @@
 
 import { useEffect, useState, type ReactNode } from 'react'
 
-import { Button, IconFolderOpenOutline16 } from '@deepseek-ai/dsh-client-ui-primitives'
+import { Button, IconFolderOpenOutlineRegular } from '@deepseek-ai/dsh-client-ui-primitives'
 
 import type { PickLevel, PickRoot, SpacesApi } from './api.ts'
 
@@ -82,7 +82,7 @@ export function FolderPicker(props: FolderPickerProps): ReactNode {
   return (
     <div className="dsh-cxp-folder-picker" data-dsh-codex-project-folder-picker>
       <div className="dsh-cxp-folder-picker-path" title={path}>
-        <IconFolderOpenOutline16 size={16} />
+        <IconFolderOpenOutlineRegular size={16} />
         <span className="dsh-cxp-folder-picker-crumb">{path}</span>
       </div>
       <div className="dsh-cxp-folder-picker-jump">
@@ -121,7 +121,7 @@ export function FolderPicker(props: FolderPickerProps): ReactNode {
               onClick={() => { void go(dir.path) }}
               title={dir.path}
             >
-              <IconFolderOpenOutline16 size={15} />
+              <IconFolderOpenOutlineRegular size={15} />
               <span className="dsh-cxp-folder-picker-name">{dir.name}</span>
             </button>
           ))}

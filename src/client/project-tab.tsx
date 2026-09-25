@@ -34,16 +34,16 @@
 
 import { useCallback, useEffect, useRef, useState, type MouseEvent, type ReactNode } from 'react'
 import {
-  IconCopyOutline16,
-  IconDownloadOutline16,
-  IconEditOutline16,
-  IconFolderClose16,
-  IconFolderOpen16,
-  IconFolderOpenOutline16,
-  IconLinkOutline16,
-  IconRefreshOutline16,
-  IconSearchOutline16,
-  IconWarningOutline16,
+  IconCopyOutlineRegular,
+  IconDownloadOutlineRegular,
+  IconEditOutlineRegular,
+  IconFolderCloseRegular,
+  IconFolderOpenRegular,
+  IconFolderOpenOutlineRegular,
+  IconLinkOutlineRegular,
+  IconRefreshOutlineRegular,
+  IconSearchOutlineRegular,
+  IconWarningOutlineRegular,
   Menu,
   writeClipboard,
 } from '@deepseek-ai/dsh-client-ui-primitives'
@@ -271,7 +271,7 @@ export function ProjectTab(props: ProjectTabProps): ReactNode {
   const toolbar = (
     <div className="dsh-cxp-files-toolbar">
       <div className="dsh-cxp-files-search">
-        <IconSearchOutline16 size={14} />
+        <IconSearchOutlineRegular size={14} />
         <input
           className="dsh-cxp-files-search-input"
           value={query}
@@ -282,13 +282,13 @@ export function ProjectTab(props: ProjectTabProps): ReactNode {
         {searching && <span className="dsh-cxp-files-search-spin">…</span>}
       </div>
       <button type="button" className={`dsh-cxp-tab-icon-btn${refreshing ? ' dsh-cxp-refresh-spinning' : ''}`} title="刷新" disabled={uploading} onClick={doRefresh}>
-        <IconRefreshOutline16 size={15} />
+        <IconRefreshOutlineRegular size={15} />
       </button>
       <button type="button" className="dsh-cxp-tab-icon-btn" title="上传文件" disabled={uploading || defaultUploadDir() === null} onClick={() => { const d = defaultUploadDir(); if (d !== null) openUploadPicker(d) }}>
         <UploadArrowIcon size={15} />
       </button>
       <button type="button" className="dsh-cxp-tab-icon-btn" title="上传文件夹" disabled={uploading || defaultUploadDir() === null} onClick={() => { const d = defaultUploadDir(); if (d !== null) { uploadTargetDir.current = d; folderInputRef.current?.click() } }}>
-        <IconFolderOpen16 size={15} />
+        <IconFolderOpenRegular size={15} />
       </button>
       <input
         ref={fileInputRef}
@@ -402,18 +402,18 @@ export function ProjectTab(props: ProjectTabProps): ReactNode {
             ? [{ id: 'upload-here', label: '上传到此处', icon: <UploadArrowIcon size={14} /> }]
             : []),
           ...(rowMenu !== null && rowMenu.isFile
-            ? [{ id: 'download', label: '下载', icon: <IconDownloadOutline16 size={14} /> }]
+            ? [{ id: 'download', label: '下载', icon: <IconDownloadOutlineRegular size={14} /> }]
             : []),
           // 编辑 only where the plugin's page has something to edit — a binary
           // file opens there already, for its download.
           ...(rowMenu !== null && rowMenu.isFile && viewerKindForPath(rowMenu.path) !== 'binary'
-            ? [{ id: 'edit', label: '编辑', icon: <IconEditOutline16 size={14} /> }]
+            ? [{ id: 'edit', label: '编辑', icon: <IconEditOutlineRegular size={14} /> }]
             : []),
           ...(rowMenu !== null && !rowMenu.isFile
-            ? [{ id: 'open-dir', label: '用文件管理器打开', icon: <IconFolderOpenOutline16 size={14} /> }]
+            ? [{ id: 'open-dir', label: '用文件管理器打开', icon: <IconFolderOpenOutlineRegular size={14} /> }]
             : []),
-          { id: 'relative', label: '复制相对路径', icon: <IconCopyOutline16 size={14} /> },
-          { id: 'absolute', label: '复制绝对路径', icon: <IconCopyOutline16 size={14} /> },
+          { id: 'relative', label: '复制相对路径', icon: <IconCopyOutlineRegular size={14} /> },
+          { id: 'absolute', label: '复制绝对路径', icon: <IconCopyOutlineRegular size={14} /> },
         ]}
         onSelect={(id) => {
           const target = rowMenu
@@ -443,7 +443,7 @@ function MissingRow(props: { path: string }): ReactNode {
   const { path } = props
   return (
     <div className="dsh-cxp-tree-row dsh-cxp-tree-missing" data-is-missing>
-      <span className="dsh-cxp-tree-icon"><IconWarningOutline16 size={14} /></span>
+      <span className="dsh-cxp-tree-icon"><IconWarningOutlineRegular size={14} /></span>
       <span className="dsh-cxp-tree-name">{basename(path)} (⚠ directory missing)</span>
     </div>
   )
@@ -513,7 +513,7 @@ function DirNode(props: {
         }}
         onContextMenu={(event) => { openRowMenu(event, path, false) }}
       >
-        <span className="dsh-cxp-tree-icon">{expanded ? <IconFolderOpen16 size={14} /> : <IconFolderClose16 size={14} />}</span>
+        <span className="dsh-cxp-tree-icon">{expanded ? <IconFolderOpenRegular size={14} /> : <IconFolderCloseRegular size={14} />}</span>
         <span className="dsh-cxp-tree-name">{name}</span>
         {rowAction(path)}
       </div>
@@ -556,7 +556,7 @@ function DirNode(props: {
   )
 }
 
-/** An upload arrow-into-tray glyph (mirrors dsh-better-sidebar's IconUploadOutline16,
+/** An upload arrow-into-tray glyph (mirrors dsh-better-sidebar's IconUploadOutlineRegular,
  *  which the shared primitives do not provide). Used for the 上传文件 action and
  *  the folder context menu's 上传到此处. */
 function UploadArrowIcon({ size = 16, className }: { size?: number; className?: string }): ReactNode {
@@ -585,7 +585,7 @@ function AtGlyph({ size = 14 }: { size?: number }): ReactNode {
 }
 
 /** A compact document/file glyph (mirrors better-sidebar's VscFile). The dsh
- *  code icon (`IconCodeOutline16`) is a `#`-shaped hashtag, so file rows used
+ *  code icon (`IconCodeOutlineRegular`) is a `#`-shaped hashtag, so file rows used
  *  it directly would each show a `#`; a proper file icon is drawn inline here. */
 function FileGlyph(): ReactNode {
   return (
@@ -624,7 +624,7 @@ function FileRow(props: {
     >
       <span className="dsh-cxp-tree-icon"><FileGlyph /></span>
       <span className="dsh-cxp-tree-name">{entry.name}</span>
-      {entry.isSymlink && <IconLinkOutline16 size={12} className="dsh-cxp-tree-symlink" />}
+      {entry.isSymlink && <IconLinkOutlineRegular size={12} className="dsh-cxp-tree-symlink" />}
       {rowAction(entry.path)}
     </div>
   )

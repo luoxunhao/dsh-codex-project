@@ -10,6 +10,9 @@ coverage/
 dist/
 *.tsbuildinfo
 
+# Browser-probe output (scripts/browser_probe.py): screenshots + report.json
+.browser-probe/
+
 # Logs & OS noise
 *.log
 .DS_Store

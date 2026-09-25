@@ -33,7 +33,7 @@
 import { createElement, Fragment } from 'react'
 import { flushSync } from 'react-dom'
 import { createRoot, type Root } from 'react-dom/client'
-import { IconFolderOpenOutline16, IconSettingsOutline16 } from '@deepseek-ai/dsh-client-ui-primitives'
+import { IconFolderOpenOutlineRegular, IconSettingsOutlineRegular } from '@deepseek-ai/dsh-client-ui-primitives'
 
 import type { SpacesApi } from './api.ts'
 import type { ClientWorkspaceView, ClientWorkspacesService } from './context.ts'
@@ -204,7 +204,7 @@ export function mountWorkspaceMenuManageEntry(deps: {
         menuRow(
           'data-dsh-codex-project-menu-open-directory',
           MENU_OPEN_DIRECTORY_LABEL,
-          createElement(IconFolderOpenOutline16, { size: 16 }),
+          createElement(IconFolderOpenOutlineRegular, { size: 16 }),
           () => {
             const workspace = workspaceOfRow(row, workspaces)
             if (workspace === undefined) return
@@ -220,7 +220,7 @@ export function mountWorkspaceMenuManageEntry(deps: {
         menuRow(
           'data-dsh-codex-project-menu-manage',
           MENU_MANAGE_LABEL,
-          createElement(IconSettingsOutline16, { size: 16 }),
+          createElement(IconSettingsOutlineRegular, { size: 16 }),
           () => {
             const workspace = workspaceOfRow(row, workspaces)
             if (workspace === undefined) return

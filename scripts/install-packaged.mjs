@@ -132,11 +132,17 @@ async function recover(profile, dir, snapshot) {
   return `plugin uninstalled from "${profile}"; dsh boots again: ${(await bootProbe(profile)).up}`
 }
 
-/** Relative path + cwd: GNU tar reads "E:\…" as a remote host and fails. */
+/**
+ * Relative path + cwd: GNU tar reads "E:\…" as a remote host and fails.
+ * `tar` on Windows emits CRLF line endings, so every entry carries a trailing
+ * `\r`; callers compare that output against exact paths (`listing.includes(…)`)
+ * and a stray `\r` makes a complete artifact look like it is missing its
+ * manifest. Normalize here so no caller has to remember.
+ */
 function tarOut(args) {
   const r = spawnSync('tar', args, { cwd: repoRoot, encoding: 'utf8' })
   if (r.status !== 0) fail(`tar ${args.join(' ')}: ${r.stderr?.trim() || 'failed'}`)
-  return r.stdout
+  return r.stdout.replace(/\r\n/g, '\n')
 }
 
 const argv = process.argv.slice(2)

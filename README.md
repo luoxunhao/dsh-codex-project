@@ -212,7 +212,7 @@ fs fence 按可写根集合放行/拒绝（与 runner 共用同一命中判定�
 
 **前置**：已装好 DSH（`dsh web` 能正常运行），Node.js ≥ 22.5、pnpm ≥ 10。
 
-本插件基线 **DSH 0.1.6-alpha.2**（peer 范围 `^0.1.6-alpha.2`，已在发布版 **0.1.6-alpha.2** 上完成真机挂载验证：「项目文件夹」「文件预览」两个 tab 在原生右侧栏内正常打开）。**0.1.5-rc.x 与 0.1.2-alpha.x 不再支持**——原生侧边栏那条承载线要 0.1.6，旧线的宿主服务面也已变，请升级 DSH 运行时。
+本插件基线 **DSH 0.1.7-rc.2**（peer 范围 `^0.1.7-rc.2`，已在真机完成挂载验证：「项目文件夹」「文件预览」两个 tab 在原生右侧栏内正常打开，`/codex-project/api/*` 路由与 client bundle 均由宿主实际供给）。**0.1.6-alpha.x 及更早不再支持**——0.1.7 起消息来源（`MessageSource`）改成按生产者各自声明的**可合并**联合类型（旧的通用 `'plugin'` kind 已被移除），侧边栏承载线也随之上移，旧线的宿主服务面已变，请升级 DSH 运行时。
 
 ```sh
 dsh plugin --profile web add @luoxunhao/dsh-codex-project
@@ -229,7 +229,7 @@ pnpm install && pnpm build
 dsh plugin --profile web add <本仓库绝对路径>
 ```
 
-~~也可用 `dev.patch.yml` 挂载（无需 install 进 profile）~~ —— **0.1.6 上不可用**：该文件用两条 `file://` 行加载同一个包，`client-modules` 现在按包名归并 Loader 源，会直接报 `resolves from multiple active Loader sources; remove one entry`，插件 client 进不了模块图（侧边栏不出现）。用上面 `dsh plugin --profile web add <路径>` 挂载（实测可用）。
+~~也可用 `dev.patch.yml` 挂载（无需 install 进 profile）~~ —— **0.1.6 起不可用**（0.1.7 同样）：该文件用两条 `file://` 行加载同一个包，`client-modules` 现在按包名归并 Loader 源，会直接报 `resolves from multiple active Loader sources; remove one entry`，插件 client 进不了模块图（侧边栏不出现）。用上面 `dsh plugin --profile web add <路径>` 挂载（实测可用）。
 
 client 改动浏览器硬刷新即可；host 改动（路由、seam、fs、runner）需重启 `dsh web`。
 
@@ -243,8 +243,8 @@ client 改动浏览器硬刷新即可；host 改动（路由、seam、fs、runne
 | 报 `Ignored build scripts` | pnpm 拦截构建脚本。在 profile 目录下跑 `pnpm approve-builds --all`。 |
 | 报 `minimum release age` | 版本发布不足 24 小时。等 24h 或重跑一次。 |
 | 报「找不到 profile 目录」 | 先跑一次 `dsh web`，让它初始化 profile。 |
-| **装上之后 `dsh` 直接起不来** | 报错一定是 `plugin tree failed to load: failed to import loader entry codex-project…`（或 `codex-project-fs`），后面紧跟原因 —— 通常是宿主版本不在 `^0.1.6-alpha.2` 这条线上（缺我们 import 的导出），或 Node < 22.5（没有 `node:sqlite`）。**一条命令即可恢复启动**：`dsh plugin --profile web remove @luoxunhao/dsh-codex-project`，然后对齐版本再装。这类失败发生在启动期、不会留下半装状态。（本插件不用条件挂载来"降级绕过"，就是为了让这种不兼容报出来而不是被藏起来。） |
-| 「项目文件夹」tab 不出现 | 多半是 client 根本没进模块图：看 `dsh web` 启动日志有没有 `client-modules: ... resolves from multiple active Loader sources`（用 `dev.patch.yml` 的两条 `file://` 行挂载就会触发，见上方「本地开发」）。改用 `dsh plugin --profile web add` 挂载。原生侧边栏（ui-sidebar-right）是 0.1.6 web 组合的默认装配，缺失即宿主版本不对。 |
+| **装上之后 `dsh` 直接起不来** | 报错一定是 `plugin tree failed to load: failed to import loader entry codex-project…`（或 `codex-project-fs`），后面紧跟原因 —— 通常是宿主版本不在 `^0.1.7-rc.2` 这条线上（缺我们 import 的导出），或 Node < 22.5（没有 `node:sqlite`）。**一条命令即可恢复启动**：`dsh plugin --profile web remove @luoxunhao/dsh-codex-project`，然后对齐版本再装。这类失败发生在启动期、不会留下半装状态。（本插件不用条件挂载来"降级绕过"，就是为了让这种不兼容报出来而不是被藏起来。） |
+| 「项目文件夹」tab 不出现 | 多半是 client 根本没进模块图：看 `dsh web` 启动日志有没有 `client-modules: ... resolves from multiple active Loader sources`（用 `dev.patch.yml` 的两条 `file://` 行挂载就会触发，见上方「本地开发」）。改用 `dsh plugin --profile web add` 挂载。原生侧边栏（ui-sidebar-right）是 0.1.6 起 web 组合的默认装配，缺失即宿主版本不对。 |
 | Windows 下终端/runner 异常 | 确认 `@deepseek-ai/dsh-sandbox-windows-acl` 已正确安装（koffi 需构建脚本）。 |
 
 </details>
@@ -253,7 +253,7 @@ client 改动浏览器硬刷新即可；host 改动（路由、seam、fs、runne
 
 ```bash
 pnpm typecheck          # 类型检查（tsc --noEmit）
-pnpm test               # 单元测试（vitest，18 个文件 / 242 用例）
+pnpm test               # 单元测试（vitest，18 个文件 / 246 用例）
 pnpm build              # 构建 lib/（tsc types + tsdown：host ESM + client CJS + runner + fs）
 pnpm proto:verify       # 多根 runner 原型实证（Windows ACL，需先 build）
 ```
@@ -266,22 +266,26 @@ pnpm proto:verify       # 多根 runner 原型实证（Windows ACL，需先 buil
 - 原生两个 type（`codex-project` / `codex-project-file`）都是 **page 类型**（不声明 `patterns`），不与产品自带的 `dsh-resource://file/**` viewer 抢地址。读文件反而**主动交给**那个 viewer：`openResource('dsh-resource://file/session/<id>/<绝对路径>')`，宿主 `workspaceFiles` 的 `read/readBytes/readAll/stat` 不 confine 到会话根（只有 `list` confine），所以工作区外与跨盘文件都能原生预览；插件自有的 `codex-project-file` page 只承担宿主做不到的两件事——**编辑写回**（走插件 `/write` 的多根 fence）与**无扩展名文件的下载**；
 - fence 只改一处：复用 `dirs-api.ts` 的 `fenceFor`，不要另写一份 roots 推导。
 
-## 宿主版本基线（0.1.6-alpha.2）
+## 宿主版本基线（0.1.7-rc.2）
 
 | 项 | 值 |
 |---|---|
-| peer 范围 | `@deepseek-ai/dsh-*` 一律 `^0.1.6-alpha.2` |
-| 验证基线 | **DSH 0.1.6-alpha.2**（`dsh plugin --profile web add <本仓库>` 装进 `web` profile → `dsh web`）。**2026-09-20 真机重验通过**，挂载面那两条改动（`ctx.inject` 依赖表加 `sessions`、`dsh.client.inject` 摘掉承载包）不再是欠账：原生右侧栏 tab 条出现「项目文件夹」并可打开；根行展开的目录列表走插件自有多根路由；点文件开 `codex-project-file` 预览 tab（markdown 正常渲染）；切「编辑」CodeMirror 正常挂载，未脏时「保存」为 disabled；右键「引用到对话」真的把引用插进了输入框——即合成 `{ get, sessions }` 那条在真宿主上生效，不是只被 jsdom fake 建模。`pnpm typecheck` / `pnpm test` 225 用例 / `pnpm build` 全绿，控制台零报错（唯一警告来自无关的 dsh-dream-skin，外观类）。`/adddir` 的 native 门控也在真机上复验过：`/` 菜单里 `/adddir` 正常在册（54 项）。**2026-09-21 追加真机验证（预览改走宿主自带 viewer）**：会话根之外、且在另一个盘（C:）的 JSON / markdown / jpg / PDF 都能在原生 tab 里读出来（markdown 全文渲染、`img` naturalWidth 3840×2160、PDF canvas 793×1122、无扩展名文件仍落回自有 page 的下载），`tab.actions.openResource` 在该宿主确实存在，地址里的 `C:` 冒号按字面保留也能被解析。两点保留：**本次是 `link:` 指向本地构建**（npm 上只有 0.11.0，非发布版路径）；**「重复点击同一文件会重读」一项本轮未测**。09-21 那轮的欠账：浏览器面板未开，只有 DOM 结构证据、无视觉截图；超长文件靠滚动续读的分页、跨盘文件的实时刷新（change feed 按会话根过滤，仅代码层判断）、会话切换与多 pane 下 `openResource` 的落点，都未实测。**同轮补测了写回**：右键「编辑」开自有 page 直接进编辑器（CodeMirror host 不 hidden），改文本后「保存」由 disabled 转可点，Ctrl+S 之后磁盘文件真的变了——目标在会话根之外，但**与主根同盘**，跨盘符那一条只验到读 |
+| peer 范围 | `@deepseek-ai/dsh-*` 一律 `^0.1.7-rc.2` |
+| 验证基线 | **DSH 0.1.7-rc.2（2026-09-21 升级并真机验证通过）**。`pnpm install:packaged --profile web` 走完整 10 项校验（含**真启动探针**）后，`dsh web --no-open --port 0` 实起一台服务：`/codex-project/api/ping` 返回 `{"ok":true,"plugin":"dsh-codex-project"}`、`/dirs` 返回本机真实多根工作区数据；插件 client bundle 经宿主实际供给（`plugins/??@luoxunhao/dsh-codex-project/client.js` 取回 **1,615,527 字节**，与本次构建产物逐字节同尺寸），且确认服务出去的那份里已是新图标名、无残留 `…16`；`__DSH_BOOT__` 清单里 `@luoxunhao/dsh-codex-project` 在册、`rev` 有效、`inject: ["@deepseek-ai/dsh-client-ui-slots"]` 边完好；`--dump-config` 里补丁层正确合成（`codex-project` + `codex-project-fs` 两行插入、核心 `fs-sandbox` 被禁）。`pnpm typecheck` / `pnpm test` 246 用例 / `pnpm build`（含 client 纯度门）全绿。**本轮未覆盖**：浏览器面板未开，故「项目文件夹」tab 的**视觉**呈现与点击交互、自有 page 编辑写回、「引用到对话」、`/adddir`、`add_dir` 工具、从 npm registry 下载那条安装路径（registry 上仍是 0.11.0），均由既有 jsdom 用例守着而非本轮真机复验 |
+| 0.1.7 升级改动 | 两处 API 断裂，均为**语义变化**而非简单改名：① **消息来源不再有通用 `'plugin'` kind**——`MessageSource` 改成按生产者各自声明 `kind` 的可合并联合类型（`MessageSourceMap` 模块增强），插件改为在 `src/context-injection.ts` 里 `declare module '@deepseek-ai/dsh-llm'` 声明自有 kind `'codex-project'`，并带 `form: 'catalog'`（目录随变更重发布，正是该提醒的契约）；去重判断同步改用 `SOURCE_KIND`，**若只改类型不改判断会静默失去去重、每步重复注入**。② **`dsh-client-ui-primitives` 的 16px 图标改名**：`IconXxx16` → `IconXxxRegular` / `IconXxxMedium`，两者**尺寸同为 16px**，只差描边（`Regular`=1、`Medium`=1.3）；旧名未显式传 `strokeWidth`，走 SVG 默认 1，故按 `Regular` 对应（取 `Medium` 会让全线图标变粗）。另：primitives 0.1.7 的 bundle 新增 `@deepseek-ai/dsh-client-store` / `dsh-util-code-language` / `dsh-util-workspace-path` 三个裸 import，`dsh-client-store` 又需要 `zustand` / `immer`——按"消费者提升进 devDependencies"的既有规则补齐，否则 browser 用例在 resolve 阶段就挂 |
 | 「编辑工作区」弹窗 + `primary` | **2026-09-21 在 0.1.6-alpha.2 真机验证通过**（`dsh web --no-open --port 0` + link 本地构建，用真实 `pigo` 工作区）：菜单注入项显示「编辑工作区」；弹窗截图核对过视觉（源文件夹分组、灰底圆角行、蓝色「主要」药丸、行尾「设为主要」/「×」）；真点击设主要 → PUT → `dirs.db` 落库 → 重读行序翻转，交回锚点即清除标记；「项目文件夹」tab 根行刷新后跟随 primary；`GET /project` 带出 `primary`、非 `dirs` 成员的 `primary` → 400 且不改写记录；用户既有 `dirs.db` 被 `ALTER TABLE` 真实升级（测后与快照逐字节一致）。**本轮真机还揪出两个静态渲染看不到的坑**：① 宿主浅色主题下 `--dsw-alias-bg-layer-1/2/base` 全是 `#fff`，靠 layer token 做的行底色/选择器框是白底白块，改成 `--dsh-cxp-fill`（按 label 色 color-mix）；② 弹窗 portal 在宿主 `border-box` reset 之外，无按钮的「主要」行比别的行矮 6px，补了 `min-height`。**未覆盖**：深色/皮肤主题下的观感；真机上「走选择器添加一个新目录」的完整写入（会改用户配置，只验到选择器打开与返回）；发布版安装路径 |
-| 打包产物安装（0.14.0） | **2026-09-21 覆盖**：`pnpm pack` 出 `luoxunhao-dsh-codex-project-0.14.0.tgz` → `dsh plugin --profile web add <绝对路径>.tgz` → `dsh web --no-open --port 0`。profile 依赖由 `link:` 变成 `file:…tgz`，`node_modules/@luoxunhao/dsh-codex-project` 是解出来的**真实目录**（`lib/client.js` 与本次构建产物同尺寸 1,615,347 字节、且不带 `client.js.map`），bundles 行被 `add` 自动补回。真机验到：宿主正常 boot、右侧栏「项目文件夹」tab 在册并可开、5 个工作区根行来自本机既有配置、展开根走插件自有多根路由拿到目录（含中文文件名）、点文件交给**宿主自带 viewer** 渲染 markdown（预览/编辑切换在位）、控制台零报错。**未覆盖**：这一轮的自有 page 编辑写回、「引用到对话」、`/adddir`、`add_dir` 工具；**从 npm registry 下载**（registry 上只有 0.11.0）；桌面 profile 的 vendor tarball 路径。两个坑见 AGENTS §3 第 7 条（link 残留导致「装了等于没装」与 `ERR_PNPM_EPERM`） |
+| 打包产物安装（0.14.0） | **2026-09-21 覆盖**：`pnpm pack` 出 `luoxunhao-dsh-codex-project-0.14.0.tgz` → `dsh plugin --profile web add <绝对路径>.tgz` → `dsh web --no-open --port 0`。profile 依赖由 `link:` 变成 `file:…tgz`，`node_modules/@luoxunhao/dsh-codex-project` 是解出来的**真实目录**（`lib/client.js` 与本次构建产物同尺寸、且不带 `client.js.map`），bundles 行被 `add` 自动补回。真机验到：宿主正常 boot、右侧栏「项目文件夹」tab 在册并可开、5 个工作区根行来自本机既有配置、展开根走插件自有多根路由拿到目录（含中文文件名）、点文件交给**宿主自带 viewer** 渲染 markdown（预览/编辑切换在位）、控制台零报错。**未覆盖**：这一轮的自有 page 编辑写回、「引用到对话」、`/adddir`、`add_dir` 工具；**从 npm registry 下载**（registry 上只有 0.11.0）；桌面 profile 的 vendor tarball 路径。两个坑见 AGENTS §3 第 7 条（link 残留导致「装了等于没装」与 `ERR_PNPM_EPERM`） |
+| 0.1.7 适配（0.15.1） | **2026-09-21 完成**：把 peer/dev 依赖从 `^0.1.6-alpha.2` 提到 `^0.1.7-rc.2`，按上面「0.1.7 升级改动」修掉两处 API 断裂，并补齐 primitives 0.1.7 新增裸 import 的 devDependencies。真机验证：`pnpm install:packaged --profile web` 10 项校验全过（含真启动探针）→ `dsh web --no-open --port 0`，`/codex-project/api/ping` 200、插件 client bundle 经宿主供给 1,615,527 字节且内容是新的（有 `…Regular`、无残留 `…16`）。**过程中顺带修掉脚本自身一个 Windows 缺陷**（preflight 因 tar 输出 CRLF 恒判"缺文件"，见上表 `tar` 解析一行）。**未覆盖**：浏览器面板未开，tab 视觉与点击交互、编辑写回、「引用到对话」、`/adddir`、`add_dir`、npm registry 下载路径 |
+| 浏览器自动化验收（0.15.1） | **2026-09-21 真机通过：23/23 项**。用 Playwright 驱动**真实 Chrome**（`channel="chrome"`，系统已装，无需下载浏览器）跑 `scripts/browser_probe.py <url> <outDir>`，针对实起的 `dsh web` 逐项断言，脚本已接成 `pnpm browser:verify`。**这也补齐了上一行"未开浏览器面板"的欠账**：① 插件 client 进 `__DSH_BOOT__`，`inject` 边只有 `ui-slots`；② 原生右侧栏出现「项目文件夹」tab 并可打开；③ 多根树渲染出 `dsh-codex-project (主)` + `deepseek-harness` 两个根，走插件自有 `/project` 路由；④ 展开主根走插件自有 `/list` 路由，列出 26 行真实目录；⑤ 点文件经 `openResource` 交给**宿主自带 viewer**（新开 tab、DOM 里出现 `dsh-resource://` 地址）；⑥ 右键菜单**按目标类型区分**——目录 `['引用到对话','上传到此处','用文件管理器打开','复制相对路径','复制绝对路径']`、文件 `['引用到对话','下载','编辑','复制相对路径','复制绝对路径']`；⑦ 「编辑」开插件**自有 page**、CodeMirror 挂载且 `hidden` 为 false（60 行）、干净时「保存」disabled、改动后转可点、保存真的 POST `/codex-project/api/write`（**写回落到磁盘**：探针追加的文本随后确实出现在该文件里）；⑧ 「引用到对话」真的把 chip 注进会话输入框（`AGENTS.md`）——即合成 `{ get, sessions }` 那条在 0.1.7 真宿主上生效。全程 **0 个 page exception、0 条 console error**。仓库同时保留 `scripts/browser_probe.py` 与其依赖的 DOM 事实（右侧栏默认折叠、工作区"新建会话"按钮需 hover 才出现、`.dsh-cxp-tree-row` 行、菜单 `[role="menu"]`）。**仍未覆盖**：`/adddir` 与 `add_dir` 工具、npm registry 下载安装路径、深色/皮肤主题观感 |
+| 安装脚本 `tar` 解析（Windows） | **2026-09-21 升级时发现并修复**：`scripts/install-packaged.mjs` 的 preflight 直接 `split('\n')` 比较 tar 清单，而 Windows 的 `tar` 输出是 CRLF，每个条目尾部带 `\r`，于是 `listing.includes('package/cordis.patch.yml')` 恒为 false —— **一个完全正常的 tgz 会被判成"缺 manifest/patch/bundle"而拒绝安装**。已在 `tarOut()` 统一把 `\r\n` 归一为 `\n`。这条与 DSH 版本无关，是脚本自身的 Windows 缺陷 |
 | `@deepseek-ai/cordis` | `^4.0.2`（与 DSH `vendor/cordis` 同版） |
 | 依赖面修复（0.14.1） | **2026-09-21 真机定位并修复**。0.14.0 打包产物装上后，该 profile 里**每条对话都在第一次工具调用时失败**：`Cannot read properties of undefined (reading 'prepare')`，UI 显示「本轮运行失败」、skill 调用 `interrupted` —— 而宿主启动、右侧栏 tab、文件预览全部正常，所以第一反应会以为是插件市场坏了。二分过程：装上有错 → 卸载即正常 → 用 `--patch` 只禁主行 `codex-project` 仍有错（锁定在 fs 提供者那一层，与主行无关）→ 手工删掉 profile 里那 6 份重复的 `@deepseek-ai/dsh-*` 副本立刻恢复。根因是把宿主自带的包挂在了 `dependencies` 上（跨实例模块级 Symbol 对不上），规则见 AGENTS §2。**修后复验**：`dir` 命令真的执行并贴回输出（1 轮 2 步、无报错，顺带证明 spawn 出去的 runner 仍能解析 windows-acl）、`/codex-project/api/list` 多根列表正常、越界路径仍被 fence 拒（`is outside the project roots`）、profile 里只剩 `dsh-sandbox-windows-acl` 一份是我们带的；`pnpm typecheck` / 242 用例 / `install:packaged` 8 项校验全过。**仍未覆盖**：自有 page 编辑写回、「引用到对话」、`/adddir`、`add_dir` 工具、npm registry 下载路径 |
 
 **三个必须知道的坑**（升级时踩过，别再踩）：
 
-1. **semver 普通范围不匹配预发布版本**。`semver.satisfies('0.1.6-alpha.2', '^0.1.5-rc.1')` 严格模式返回 **false**——peer 范围必须显式写成目标预发布线（`^0.1.6-alpha.2`），否则装不上。
-2. **`dsh-client-ui-primitives` 不声明 `dependencies`**，其 bundle 裸 import `shiki` / `@shikijs/langs/*` / `anser` / `clsx` / `katex` / `mdast-util-*` / `micromark-*`，0.1.6 起又加了 `diff` 与 `simple-icons`（DiffBlock / 品牌图标）。这些**必须由消费者提升进 `devDependencies`**（本仓库已补齐），否则 vitest 的 browser 用例在 resolve 阶段报 `Failed to resolve import`。**这组 devDependencies 不得回退**；升 primitives 后先把它 bundle 的裸 import 全列一遍再对。
-3. **一个包只能有一条 Loader 行**。0.1.6 的 `client-modules` 按包名归并 Loader 源，`lib/index.js` + `lib/fs.js` 两条 `file://` 行会被判为 `resolves from multiple active Loader sources` 并让插件 client 掉出模块图（见「本地开发」）。
+1. **semver 普通范围不匹配预发布版本**。`semver.satisfies('0.1.7-rc.2', '^0.1.6-alpha.2')` 严格模式返回 **false**——peer 范围必须显式写成目标预发布线（现为 `^0.1.7-rc.2`），否则装不上。
+2. **`dsh-client-ui-primitives`（以及 `dsh-client-store`）不声明 `dependencies`**，其 bundle 裸 import `shiki` / `@shikijs/langs/*` / `anser` / `clsx` / `katex` / `mdast-util-*` / `micromark-*` / `diff` / `simple-icons`，**0.1.7 起再加 `@deepseek-ai/dsh-client-store`、`dsh-util-code-language`、`dsh-util-workspace-path`**，而 `dsh-client-store` 自己又要 `zustand`(`~4.4.7`) 与 `immer`(`^10.1.1`)。这些**必须由消费者提升进 `devDependencies`**（本仓库已补齐），否则 vitest 的 browser 用例在 resolve 阶段直接 `Failed to resolve import` / `Cannot find package`。**这组 devDependencies 不得回退**；升 primitives 后先把它 bundle 的裸 import 全列一遍再对。
+3. **一个包只能有一条 Loader 行**。`client-modules` 按包名归并 Loader 源，`lib/index.js` + `lib/fs.js` 两条 `file://` 行会被判为 `resolves from multiple active Loader sources` 并让插件 client 掉出模块图（见「本地开发」）。
 
 > client bundle 的注册 id 与侧边栏承载无关：插件只调用公开面（`ctx.sidebarRightTabs` + `ctx.slots`）。better-sidebar v0.19.0 起把 tab 转发到 **DSH 原生右侧栏**——正因如此，**两者同时注册会出两个「项目文件夹」tab**，插件只走原生那一条。
 

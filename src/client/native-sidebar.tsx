@@ -24,7 +24,7 @@
  * @module dsh-codex-project/client/native-sidebar
  */
 import { createElement, useCallback, useSyncExternalStore, type ReactNode } from 'react'
-import { IconFolderOpenOutline16 } from '@deepseek-ai/dsh-client-ui-primitives'
+import { IconFolderOpenOutlineRegular } from '@deepseek-ai/dsh-client-ui-primitives'
 
 import type { SpacesApi } from './api.ts'
 import type {
@@ -97,7 +97,7 @@ export function previewModeOf(params: unknown): 'edit' | undefined {
 
 /** The folder glyph the guide capsule and the chip title draw. */
 function FolderGlyph({ size = 16, className }: { size?: number; className?: string }): ReactNode {
-  return createElement(IconFolderOpenOutline16, { size, className })
+  return createElement(IconFolderOpenOutlineRegular, { size, className })
 }
 
 /**

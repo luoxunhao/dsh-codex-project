@@ -25,7 +25,7 @@
  */
 
 import { useEffect, useState, type ReactNode } from 'react'
-import { Button, IconCloseOutline16, IconFolderOpenOutline16, IconPlusOutline16 } from '@deepseek-ai/dsh-client-ui-primitives'
+import { Button, IconCloseOutlineRegular, IconFolderOpenOutlineRegular, IconPlusOutlineRegular } from '@deepseek-ai/dsh-client-ui-primitives'
 
 import type { SpacesApi, WorkspaceDirState } from './api.ts'
 import type { ClientWorkspaceView } from './context.ts'
@@ -155,7 +155,7 @@ export function WorkspaceDialog(props: WorkspaceDialogProps): ReactNode {
             onClick={() => { if (picking) setPicking(false); else onClose() }}
             title={picking ? '返回' : '关闭'}
           >
-            <IconCloseOutline16 />
+            <IconCloseOutlineRegular />
           </Button>
         </div>
         <div className="dsh-cxp-dialog-body">
@@ -176,14 +176,14 @@ export function WorkspaceDialog(props: WorkspaceDialogProps): ReactNode {
                   <span className="dsh-cxp-dialog-section">源文件夹</span>
                   <span style={{ flex: 1 }} />
                   <button type="button" className="dsh-cxp-add-btn" disabled={busy} onClick={() => setPicking(true)}>
-                    <IconPlusOutline16 size={14} /> 添加
+                    <IconPlusOutlineRegular size={14} /> 添加
                   </button>
                 </div>
               )}
 
               {state !== null && rows().map(row => (
                 <div key={row.path} className="dsh-cxp-dialog-row" title={row.path}>
-                  <span className="dsh-cxp-root-icon"><IconFolderOpenOutline16 size={16} /></span>
+                  <span className="dsh-cxp-root-icon"><IconFolderOpenOutlineRegular size={16} /></span>
                   <span className="dsh-cxp-root-label">{basename(row.path)}</span>
                   {isPrimary(row) && <span className="dsh-cxp-root-badge">主要</span>}
                   <span style={{ flex: 1 }} />
@@ -205,7 +205,7 @@ export function WorkspaceDialog(props: WorkspaceDialogProps): ReactNode {
                       disabled={busy}
                       onClick={() => { void removeDirectory(row.path) }}
                     >
-                      <IconCloseOutline16 size={14} />
+                      <IconCloseOutlineRegular size={14} />
                     </button>
                   )}
                 </div>

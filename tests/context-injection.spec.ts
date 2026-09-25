@@ -11,7 +11,7 @@ import {
   computeWorkspaceReminder,
   foldWorkspaceContext,
   hasIdenticalInjection,
-  PLUGIN_NAME,
+  SOURCE_KIND,
 } from '../src/context-injection.ts'
 import type { WorkspaceDirs } from '../src/dirs-config.ts'
 import { seedDirs } from './helpers/dirs-test-db.ts'
@@ -32,11 +32,16 @@ function fakeSession(cwd: string | undefined, surfaceNodes: number[] = [], event
   }
 }
 
-/** A fake session event shaped like a 'user/message' surface event. */
-function userMessageEvent(contentText: string, plugin = PLUGIN_NAME): SessionEvent {
+/**
+ * A fake session event shaped like a 'user/message' surface event. Since the
+ * harness's message sources became merge-extensible, this plugin stamps its
+ * OWN kind (`SOURCE_KIND`) rather than the removed shared `'plugin'` kind, so
+ * `kind` is parameterizable to model a foreign producer's injection.
+ */
+function userMessageEvent(contentText: string, kind = SOURCE_KIND): SessionEvent {
   return {
     type: 'user/message',
-    data: { content: [{ type: 'text', text: contentText }], source: { kind: 'plugin', plugin } },
+    data: { content: [{ type: 'text', text: contentText }], source: { kind } },
   } as unknown as SessionEvent
 }
 
@@ -46,7 +51,7 @@ function message(text: string): UserMessage {
     id: `m-${text.length}-${Math.random()}`,
     role: 'user',
     content: [{ type: 'text', text }],
-    source: { kind: 'plugin', plugin: PLUGIN_NAME },
+    source: { kind: SOURCE_KIND, form: 'catalog' },
   } as unknown as UserMessage
 }
 
@@ -193,7 +198,7 @@ describe('computeWorkspaceReminder', () => {
     const reminder = computeWorkspaceReminder(rootA)
     expect(reminder).toBeDefined()
     expect(reminder!.role).toBe('user')
-    expect(reminder!.source).toEqual({ kind: 'plugin', plugin: PLUGIN_NAME })
+    expect(reminder!.source).toEqual({ kind: SOURCE_KIND, form: 'catalog' })
     const text = (reminder!.content[0] as { type: 'text'; text: string } | undefined)?.text
     expect(text).toContain(rootA)
     expect(text).toContain(rootB)

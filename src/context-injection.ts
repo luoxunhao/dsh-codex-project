@@ -22,8 +22,9 @@
  *
  * Dedup: `hasIdenticalInjection` walks the real session surface (the
  * `surface.nodes` sequences resolved through `eventAt`) for the newest
- * plugin reminder from this plugin and compares its content. A resumed
- * session whose surface already carries an identical reminder is not
+ * reminder from this plugin — matched by {@link SOURCE_KIND}, the source kind
+ * this plugin declares in `MessageSourceMap` — and compares its content. A
+ * resumed session whose surface already carries an identical reminder is not
  * re-seeded; one carrying a stale (different) list gets the current text
  * folded after its next user message. Plain, identical messages between
  * user turns do not stack.
@@ -38,8 +39,32 @@ import type { SessionEvent } from '@deepseek-ai/dsh-session'
 import { loadWorkspaceDirs, matchingWorkspace, requireCanonicalDirectory, tryCanonicalDirectory } from './dirs-config.ts'
 import type { WorkspaceDirs } from './dirs-config.ts'
 
-/** The plugin's identity in injected message sources. */
-export const PLUGIN_NAME = 'dsh-codex-project'
+/**
+ * The plugin's own `MessageSourceMap` entry. Since the harness's message
+ * sources became a MERGE-EXTENSIBLE sum type (each producer declares its own
+ * `kind` in its own module), there is no shared catch-all `plugin` kind to
+ * tag an injection with: a producer augments `MessageSourceMap` with the kind
+ * it owns. `dsh-codex-project` therefore declares `'codex-project'`.
+ *
+ * The `form` is the producer-declared {@link ContextForm}: `catalog` — "a
+ * catalog of items available in this session, republished as it changes",
+ * which is exactly this reminder's contract (the directory list is
+ * republished whenever add-dir / the manage dialog / 「设为主要」 changes it).
+ */
+declare module '@deepseek-ai/dsh-llm' {
+  interface MessageSourceMap {
+    'codex-project': { kind: 'codex-project' } & ContextFormedRef
+  }
+}
+
+/**
+ * Local alias for the harness's `ContextFormed` mix-in, imported type-only so
+ * the augmentation above stays a pure type declaration.
+ */
+type ContextFormedRef = import('@deepseek-ai/dsh-llm').ContextFormed
+
+/** The source kind this plugin stamps on every message it folds into a session. */
+export const SOURCE_KIND = 'codex-project'
 
 /** The dsh `<system-reminder>` framing convention (agent-instructions, tool-skill). */
 const REMINDER_OPEN = '<system-reminder>'
@@ -105,8 +130,8 @@ export function composeWorkspaceContextText(
 /**
  * Whether the session surface already carries this exact reminder as the
  * MOST RECENT injection from this plugin. Walks the surface from the tail
- * backwards and stops at the first plugin `user/message` tagged with
- * `PLUGIN_NAME`, comparing its content. Because the reminder text is a pure
+ * backwards and stops at the first `user/message` whose source kind is
+ * `SOURCE_KIND`, comparing its content. Because the reminder text is a pure
  * function of the directory set, an identical newest reminder means the
  * directory set did not change since the last injection → skip; a different
  * one (a stale list on a resumed session, or a set that changed after
@@ -120,7 +145,11 @@ export function hasIdenticalInjection(session: InjectionSession, message: UserMe
     const event = session.eventAt(seq)
     if (event?.type !== 'user/message') continue
     const source = event.data.source
-    if (source?.kind !== 'plugin' || source.plugin !== PLUGIN_NAME) continue
+    // `source.kind` is now this plugin's OWN declared kind (`SOURCE_KIND`);
+    // the old shared `'plugin'` catch-all is gone from the harness, so
+    // matching on it would silently stop deduplicating — every step would
+    // re-fold the reminder.
+    if (source?.kind !== SOURCE_KIND) continue
     // The newest plugin reminder is the authoritative prior state.
     return JSON.stringify(event.data.content) === JSON.stringify(message.content)
   }
@@ -143,7 +172,7 @@ export function computeWorkspaceReminder(cwd: string | undefined): UserMessage |
   if (record === undefined) return undefined
   return createUserMessage({
     content: [{ type: 'text', text: composeWorkspaceContextText(match.workspaceId, record, canonicalWorkspace) }],
-    source: { kind: 'plugin', plugin: PLUGIN_NAME },
+    source: { kind: SOURCE_KIND, form: 'catalog' },
   })
 }
 

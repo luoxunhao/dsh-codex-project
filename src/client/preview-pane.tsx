@@ -9,7 +9,7 @@
  */
 
 import { useEffect, useRef, useState, type ReactNode } from 'react'
-import { IconCodeOutline16, IconDownloadOutline16, IconWarningOutline16 } from '@deepseek-ai/dsh-client-ui-primitives'
+import { IconCodeOutlineRegular, IconDownloadOutlineRegular, IconWarningOutlineRegular } from '@deepseek-ai/dsh-client-ui-primitives'
 
 import type { SpacesApi } from './api.ts'
 import { basename } from './paths.ts'
@@ -123,17 +123,17 @@ export function PreviewPane(props: PreviewPaneProps): ReactNode {
   } else if (load.status === 'error') {
     body = (
       <div className="dsh-cxp-preview-note dsh-cxp-preview-error">
-        <IconWarningOutline16 size={14} /> {load.message}
+        <IconWarningOutlineRegular size={14} /> {load.message}
       </div>
     )
   } else if (binary) {
     body = (
       <div className="dsh-cxp-preview-binary">
-        <span className="dsh-cxp-preview-binary-icon"><IconCodeOutline16 size={18} /></span>
+        <span className="dsh-cxp-preview-binary-icon"><IconCodeOutlineRegular size={18} /></span>
         <div className="dsh-cxp-preview-binary-name">{basename(path)}</div>
         <div className="dsh-cxp-preview-binary-hint">该文件为二进制，无法在此预览</div>
         <a className="dsh-cxp-preview-download" href={api.downloadUrl(cwd, path)}>
-          <IconDownloadOutline16 size={14} /> 下载
+          <IconDownloadOutlineRegular size={14} /> 下载
         </a>
       </div>
     )
